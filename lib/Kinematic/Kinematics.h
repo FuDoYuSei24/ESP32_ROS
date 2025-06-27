@@ -20,11 +20,12 @@ class Kinematics
 {
     private:
         motor_param_t motor_param[2];
+        int16_t delta_ticks[2] = {0,0};//用于存储这一次读取的编码器数值
         uint64_t last_update_time = 0;//用于存储上一次更新电机速度的时间
         float wheel_distance = 0.0;//两个轮子之间的距离
 
     public:
-        Kinematics() = default;
+        Kinematics(/* args */) = default;
         ~Kinematics() = default;
 
         void set_wheel_distance(float distance);//设置两个轮子之间的距离
@@ -42,9 +43,5 @@ class Kinematics
         int16_t get_motor_speed(uint8_t id);
 
 };
-
-
-
-
 
 #endif

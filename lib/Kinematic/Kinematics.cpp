@@ -15,19 +15,42 @@ void Kinematics::set_motor_param(uint8_t id,float per_pluse_distancee)
 //运动学正解
 void Kinematics::kinematics_forward(float left_speed,float right_speed,float* out_linear_speed,float* out_angular_speed)
 {
-
+    *out_linear_speed = (left_speed + right_speed) / 2;
+    *out_angular_speed = (right_speed - left_speed) / wheel_distance;
 }
 
 //运动学逆解
 void Kinematics::kinematics_inverse(float linear_speed,float angular_speed,float* out_left_speed,float* out_right_speed)
 {
+    *out_left_speed = linear_speed - angular_speed * wheel_distance / 2;
+    *out_right_speed = linear_speed + angular_speed * wheel_distance / 2;
 
 }
 
-//更新电机的速度
+//输入：左右轮脉冲数，当前时间；输出：更新的电机速度和编码器数据
 void Kinematics::update_motor_speed(uint64_t current_time,int32_t left_tick,int32_t right_tick)
-{
+{ 
+    //计算时间差
+    int16_t dt = current_time - last_update_time;
 
+    //计算编码器当前与上一次读取的数值之差
+    delta_ticks[0] =  left_tick - motor_param[0].last_encoder_ticks;
+    delta_ticks[1] = right_tick - motor_param[1].last_encoder_ticks;
+    //更新当前速度
+    motor_param[0].motor_speed = delta_ticks[0] * 0.166812 / dt * 1000;
+    motor_param[1].motor_speed = delta_ticks[1] * 0.166812 / dt * 1000;
+    //更新last_tick
+    motor_param[0].last_encoder_ticks = left_tick;
+    motor_param[1].last_encoder_ticks = right_tick;
+    last_update_time = current_time;
+
+    //调用PID获取动态的输出值
+    //int temp0 = pid_controller[0].update(current_speed[0]);
+    //int temp1 = pid_controller[1].update(current_speed[1]);
+    //setMotorSpeed(AIN1, AIN2, PWMA, temp1);
+    //setMotorSpeed(BIN1, BIN2, PWMB, temp0);
+    //setMotorSpeed(CIN1, CIN2, PWMC, temp1);
+    //setMotorSpeed(DIN1, DIN2, PWMD, temp0);
 }
 
 //获取电机速度,返回值是速度
