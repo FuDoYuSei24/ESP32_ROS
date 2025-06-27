@@ -1,8 +1,7 @@
-#include "Wire.h"
-#include <MPU6050_light.h>
+#include <Arduino.h>
+#include <Esp32PcntEncoder.h>
 
-// 电机控制引脚定义A
-// 第一个TB6612模块（控制电机A和B）
+// 电机控制引脚定义
 #define AIN1 14
 #define AIN2 27
 #define PWMA 12
@@ -18,101 +17,25 @@
 #define DIN2 16
 #define PWMD 23
 
-// 共用待机引脚
-#define STBY1 33
-#define STBY2 32
+Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
+
+int64_t last_ticks[2] = {0,0};//用于存储上一次读取的编码器数值
+int16_t delta_ticks[2] = {0,0};//用于存储这一次读取的编码器数值
+int64_t last_update_time = 0;//用于存储上一次更新电机速度的时间
+float current_speed[2] = {0,0};//用于存储当前电机速度
+
+void setMotorSpeed(int in1, int in2, int pwm, int speed);
+void moveForward(int speed);
+void moveBackward(int speed);
+void turnLeft(int speed);
+void turnRight(int speed);
+void stopMotors();
 
 
-float leftSpeed = 0.0;//左速度
-float rightSpeed = 0.0;//右速度
-float Speed = 200;
-
-MPU6050 mpu(Wire);
-
-//I2C扫描函数
-void scanI2C() {
-  Serial.println("Scanning I2C devices...");
-  byte error, address;
-  int devices = 0;
-  
-  for(address = 1; address < 127; address++) {
-    Wire.beginTransmission(address);
-    error = Wire.endTransmission();
-    
-    if (error == 0) {
-      Serial.print("Device found at 0x");
-      if (address < 16) Serial.print("0");
-      Serial.print(address, HEX);
-      Serial.println();
-      devices++;
-    }
-  }
-  
-  if (devices == 0) {
-    Serial.println("No I2C devices found!");
-  }
-  Serial.println();
-}
-
-//设置电机速度
-void setMotorSpeed(int in1, int in2, int pwm, int speed) {
-  if (speed > 0) {
-    digitalWrite(in1, HIGH);
-    digitalWrite(in2, LOW);
-  } else if (speed < 0) {
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, HIGH);
-  } else {
-    digitalWrite(in1, LOW);
-    digitalWrite(in2, LOW);
-  }
-  analogWrite(pwm, abs(speed));
-}
-
-//电机前进函数
-void moveForward(int speed) {
-  setMotorSpeed(AIN1, AIN2, PWMA, speed);
-  setMotorSpeed(BIN1, BIN2, PWMB, speed);
-  setMotorSpeed(CIN1, CIN2, PWMC, speed);
-  setMotorSpeed(DIN1, DIN2, PWMD, speed);
-}
-
-//电机后退函数
-void moveBackward(int speed) {
-  setMotorSpeed(AIN1, AIN2, PWMA, -speed);
-  setMotorSpeed(BIN1, BIN2, PWMB, -speed);
-  setMotorSpeed(CIN1, CIN2, PWMC, -speed);
-  setMotorSpeed(DIN1, DIN2, PWMD, -speed);
-}
-
-//电机左转函数
-void turnLeft(int speed) {
-  setMotorSpeed(AIN1, AIN2, PWMA, speed);
-  setMotorSpeed(BIN1, BIN2, PWMB, -speed);
-  setMotorSpeed(CIN1, CIN2, PWMC, speed);
-  setMotorSpeed(DIN1, DIN2, PWMD, -speed);
-}
-
-//电机右转函数
-void turnRight(int speed) {
-  setMotorSpeed(AIN1, AIN2, PWMA, -speed);
-  setMotorSpeed(BIN1, BIN2, PWMB, speed);
-  setMotorSpeed(CIN1, CIN2, PWMC, -speed);
-  setMotorSpeed(DIN1, DIN2, PWMD, speed);
-}
-
-//电机停止函数
-void stopMotors() {
-  setMotorSpeed(AIN1, AIN2, PWMA, 0);
-  setMotorSpeed(BIN1, BIN2, PWMB, 0);
-  setMotorSpeed(CIN1, CIN2, PWMC, 0);
-  setMotorSpeed(DIN1, DIN2, PWMD, 0);
-}
-
-
-
-void setup() {
-  Serial.begin(115200);
+void setup()
+{
+  // 1.初始化串口
+  Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 初始化电机控制引脚
   pinMode(AIN1, OUTPUT);
@@ -129,64 +52,80 @@ void setup() {
   pinMode(PWMD, OUTPUT);
 
 
-  Wire.begin(21,22);//SDA,SCL
-  delay(100); // 添加延时确保I2C总线稳定
-  scanI2C(); // 添加扫描
-  
-  byte status = mpu.begin();
-  Serial.print(F("MPU6050 status: "));
-  Serial.println(status);
-  while(status!=0){ } // stop everything if could not connect to MPU6050
-  
-  Serial.println(F("Calculating offsets, do not move MPU6050"));
-  delay(1000);
-  mpu.calcOffsets(true,true); // gyro and accelero
-  Serial.println("Done!\n");
-  
+  // 2.设置编码器
+  encoders[0].init(0, 33, 32); // 初始化第一个编码器，A1=33，B1=32
+  encoders[1].init(1, 2, 4); // 初始化第二个编码器，A2=2，B2=4
+
+  moveForward(200);
 }
 
-unsigned long timer = 0;
+void loop()
+{
+  delay(10); // 等待10毫秒
+  //计算时间差
+  int16_t dt = millis() - last_update_time;
 
-void loop() {
+  //计算编码器当前与上一次读取的数值之差
+  delta_ticks[0] = encoders[0].getTicks() - last_ticks[0];
+  delta_ticks[1] = encoders[1].getTicks() - last_ticks[1];
+  //更新速度
+  current_speed[0] = delta_ticks[0] * 0.166812 / dt;
+  current_speed[1] = delta_ticks[1] * 0.166812 / dt;
+  //更新last_tick
+  last_ticks[0] = encoders[0].getTicks();
+  last_ticks[1] = encoders[1].getTicks();
+  last_update_time = millis();
 
-  //MPU6050部分
-  mpu.update();
+  // 打印两个电机的速度
+  Serial.printf("speed1=%f,speed2=%f\n",current_speed[0],current_speed[1]);
+}
 
-  if(millis() - timer > 1000){ // print data every second
-    Serial.print(F("TEMPERATURE: "));Serial.println(mpu.getTemp());
-    Serial.print(F("ACCELERO  X: "));Serial.print(mpu.getAccX());
-    Serial.print("\tY: ");Serial.print(mpu.getAccY());
-    Serial.print("\tZ: ");Serial.println(mpu.getAccZ());
-  
-    Serial.print(F("GYRO      X: "));Serial.print(mpu.getGyroX());
-    Serial.print("\tY: ");Serial.print(mpu.getGyroY());
-    Serial.print("\tZ: ");Serial.println(mpu.getGyroZ());
-  
-    Serial.print(F("ACC ANGLE X: "));Serial.print(mpu.getAccAngleX());
-    Serial.print("\tY: ");Serial.println(mpu.getAccAngleY());
-    
-    Serial.print(F("ANGLE     X: "));Serial.print(mpu.getAngleX());
-    Serial.print("\tY: ");Serial.print(mpu.getAngleY());
-    Serial.print("\tZ: ");Serial.println(mpu.getAngleZ());
-    Serial.println(F("=====================================================\n"));
-    timer = millis();
+void setMotorSpeed(int in1, int in2, int pwm, int speed) {
+  if (speed > 0) {
+    digitalWrite(in1, HIGH);
+    digitalWrite(in2, LOW);
+  } else if (speed < 0) {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, HIGH);
+  } else {
+    digitalWrite(in1, LOW);
+    digitalWrite(in2, LOW);
   }
-
-
-
-  moveForward(Speed*0.7);
-  delay(1000);
-  turnLeft(Speed*0.7);
-  delay(1000);
-  moveBackward(Speed*0.7);
-  delay(1000);
-  turnRight(Speed*0.7);
-  delay(1000);
-
-
-
+  analogWrite(pwm, abs(speed));
 }
 
+void moveForward(int speed) {
+  setMotorSpeed(AIN1, AIN2, PWMA, speed);
+  setMotorSpeed(BIN1, BIN2, PWMB, speed);
+  setMotorSpeed(CIN1, CIN2, PWMC, speed);
+  setMotorSpeed(DIN1, DIN2, PWMD, speed);
+}
 
+void moveBackward(int speed) {
+  setMotorSpeed(AIN1, AIN2, PWMA, -speed);
+  setMotorSpeed(BIN1, BIN2, PWMB, -speed);
+  setMotorSpeed(CIN1, CIN2, PWMC, -speed);
+  setMotorSpeed(DIN1, DIN2, PWMD, -speed);
+}
 
+void turnLeft(int speed) {
+  setMotorSpeed(AIN1, AIN2, PWMA, speed);
+  setMotorSpeed(BIN1, BIN2, PWMB, -speed);
+  setMotorSpeed(CIN1, CIN2, PWMC, speed);
+  setMotorSpeed(DIN1, DIN2, PWMD, -speed);
+}
+
+void turnRight(int speed) {
+  setMotorSpeed(AIN1, AIN2, PWMA, -speed);
+  setMotorSpeed(BIN1, BIN2, PWMB, speed);
+  setMotorSpeed(CIN1, CIN2, PWMC, -speed);
+  setMotorSpeed(DIN1, DIN2, PWMD, speed);
+}
+
+void stopMotors() {
+  setMotorSpeed(AIN1, AIN2, PWMA, 0);
+  setMotorSpeed(BIN1, BIN2, PWMB, 0);
+  setMotorSpeed(CIN1, CIN2, PWMC, 0);
+  setMotorSpeed(DIN1, DIN2, PWMD, 0);
+}
 
