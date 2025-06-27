@@ -18,6 +18,8 @@
 #define DIN2 16
 #define PWMD 23
 
+#define Speed_Limit 200
+
 Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
 PIDController pid_controller[2];//创建一个数组用于PID控制
 
@@ -49,10 +51,12 @@ void motorSpeedControl(){//函数用于控制电机速度（闭环控制）
   last_update_time = millis();
 
   //调用PID获取动态的输出值
-  setMotorSpeed(AIN1, AIN2, PWMA, pid_controller[0].update(current_speed[0]));
-  setMotorSpeed(BIN1, BIN2, PWMB, pid_controller[1].update(current_speed[1]));
-  setMotorSpeed(CIN1, CIN2, PWMC, pid_controller[0].update(current_speed[0]));
-  setMotorSpeed(DIN1, DIN2, PWMD, pid_controller[1].update(current_speed[1]));
+  int temp0 = pid_controller[0].update(current_speed[0]);
+  int temp1 = pid_controller[1].update(current_speed[1]);
+  setMotorSpeed(AIN1, AIN2, PWMA, temp1);
+  setMotorSpeed(BIN1, BIN2, PWMB, temp0);
+  setMotorSpeed(CIN1, CIN2, PWMC, temp1);
+  setMotorSpeed(DIN1, DIN2, PWMD, temp0);
 
 }
 
@@ -84,10 +88,10 @@ void setup()
   //初始化PID控制器
   pid_controller[0].update_pid(0.625,0.125,0.0);
   pid_controller[1].update_pid(0.625,0.125,0.0);
-  pid_controller[0].out_limit(-100,100);
-  pid_controller[1].out_limit(-100,100);
-  pid_controller[0].uptate_target(100);
-  pid_controller[1].uptate_target(100);
+  pid_controller[0].out_limit(-Speed_Limit,Speed_Limit);
+  pid_controller[1].out_limit(-Speed_Limit,Speed_Limit);
+  pid_controller[0].uptate_target(Speed_Limit);
+  pid_controller[1].uptate_target(Speed_Limit);
 }
 
 void loop()
