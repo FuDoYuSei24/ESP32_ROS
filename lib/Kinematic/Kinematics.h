@@ -9,6 +9,14 @@ typedef struct{
     int64_t last_encoder_ticks;//上一次电机的编码器读数
 }motor_param_t;
 
+typedef struct{
+    float x;
+    float y;
+    float angle;
+    float linear_speed;
+    float angular_speed;
+}odom_t;//里程计结构体
+
 /*
 *1.运动学正逆解（两个轮子的实时速度->当前实时的角速度和线速度/
 *               当前目标的角速度和线速度->两个轮子的目标速度）
@@ -23,10 +31,17 @@ class Kinematics
         int16_t delta_ticks[2] = {0,0};//用于存储这一次读取的编码器数值
         uint64_t last_update_time = 0;//用于存储上一次更新电机速度的时间
         float wheel_distance = 0.0;//两个轮子之间的距离
+        odom_t odom;//用于存储里程计信息
 
     public:
         Kinematics(/* args */) = default;
         ~Kinematics() = default;
+
+        void update_odom(uint16_t dt);//更新里程计函数
+
+        odom_t& get_odom(); //获取里程计函数
+
+        void TransAngleInPI(float angle,float& out_angle);//
 
         void set_wheel_distance(float distance);//设置两个轮子之间的距离
 

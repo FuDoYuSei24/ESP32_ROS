@@ -31,7 +31,7 @@ void Kinematics::kinematics_inverse(float linear_speed,float angular_speed,float
 void Kinematics::update_motor_speed(uint64_t current_time,int32_t left_tick,int32_t right_tick)
 { 
     //计算时间差
-    int16_t dt = current_time - last_update_time;
+    int16_t dt = current_time - last_update_time;//单位：ms
 
     //计算编码器当前与上一次读取的数值之差
     delta_ticks[0] =  left_tick - motor_param[0].last_encoder_ticks;
@@ -43,6 +43,9 @@ void Kinematics::update_motor_speed(uint64_t current_time,int32_t left_tick,int3
     motor_param[0].last_encoder_ticks = left_tick;
     motor_param[1].last_encoder_ticks = right_tick;
     last_update_time = current_time;
+
+    //更新里程计
+    update_odom(dt);
 
     //调用PID获取动态的输出值
     //int temp0 = pid_controller[0].update(current_speed[0]);
@@ -61,4 +64,39 @@ int16_t Kinematics::get_motor_speed(uint8_t id)
         return -1;
     }
     return motor_param[id].motor_speed;
+}
+
+odom_t& Kinematics::get_odom(){
+    return odom;
+}
+
+void Kinematics::TransAngleInPI(float angle,float& out_angle)
+{
+    if(angle > PI)
+    {
+        out_angle -= 2*PI;
+    }else if (angle < -PI)
+    {
+        out_angle += 2*PI;
+    }
+}
+
+void Kinematics::update_odom(uint16_t dt)
+{
+    float dt_s = float(dt) / 1000.0;//单位：ms->s
+    //获取实时的角速度和线速度
+    //拿左右轮的实时速度进行运动学正解
+    this->kinematics_forward(motor_param[0].motor_speed,motor_param[1].motor_speed,
+                            &odom.linear_speed,&odom.angular_speed);
+    odom.linear_speed = odom.linear_speed/1000.0;
+
+    //角度积分
+    odom.angle += odom.angular_speed * dt_s;
+    TransAngleInPI(odom.angle,odom.angle);
+
+    //计算机器人行走的距离
+    float delta_distance = odom.linear_speed * dt_s;
+    //计算坐标：行走距离分解到xy轴
+    odom.x += delta_distance * std::cos(odom.angle);
+    odom.y += delta_distance * std::sin(odom.angle);
 }

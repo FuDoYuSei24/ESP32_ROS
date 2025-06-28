@@ -94,6 +94,8 @@ void loop()
   setMotorSpeed(DIN1, DIN2, PWMD, temp0);   
   // 打印两个电机的速度
   //Serial.printf("speed1=%f,speed2=%f\n",current_speed[0],current_speed[1]);
+  Serial.printf("x,y,yaw=%f,%f,%f\n",kinematics.get_odom().x,kinematics.get_odom().y,
+                                     kinematics.get_odom().angle);
 }
 
 void setMotorSpeed(int in1, int in2, int pwm, int speed) {
