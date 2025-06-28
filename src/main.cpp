@@ -3,6 +3,44 @@
 #include "PIDController.h"
 #include "Kinematics.h"
 
+//引入micro-ROS和wifi相关库
+#include <wifi.h>
+#include <micro_ros_platformio.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+
+//声明一些相关的结构体对象
+rcl_allocator_t allocator;//内存分配器。用于动态内存分配管理
+rclc_support_t support;//用于存储时钟，内存分配器和上下文，用于提供支持
+rclc_executor_t executor;//执行器，用于管理订阅和计时器回调的执行
+rcl_node_t node;        //结点，用于创建结点
+
+//单独创建一个任务运行micro-ROS 相当于一个线程
+void microros_task(void* args)
+{
+  //1.设置传输协议并延迟一段时间等待设置的完成
+  IPAddress agent_ip;
+  agent_ip.fromString("192.168.0.134");//设置上位机的地址
+  set_microros_wifi_transports("沙河汤臣一品","20050202",agent_ip,8888);//设置esp32连接的wifi以及要发送数据的上位机的ip和端口号
+  delay(2000);//等待wifi连接
+  //2.初始化内存分配器
+  allocator = rcl_get_default_allocator();//获取默认的内存分配器
+  //3.初始化支持模块
+  rclc_support_init(&support,0,NULL,&allocator);//初始化支持
+  //4.初始化结点
+  rclc_node_init_default(&node,"robot_motion_control","",&support);
+  //5.初始化执行器
+  unsigned int num_handles = 0;//订阅和计时器的数量，这是一个需要更改的参数
+  rclc_executor_init(&executor,&support.context,num_handles,&allocator);
+  //循环执行
+  rclc_executor_spin(&executor);
+}
+
+
+
+
+
 // 电机控制引脚定义
 #define AIN1 14
 #define AIN2 27
@@ -79,6 +117,10 @@ void setup()
   Serial.printf("OUT:left_speed=%f,right_speed=%f\n",out_left_speed,out_right_speed);
   pid_controller[0].uptate_target(out_left_speed);
   pid_controller[1].uptate_target(out_right_speed);
+
+
+  //创建一个任务来启动micro-ros的task
+  xTaskCreate(microros_task,"micros_task",10240,NULL,1,NULL);
                           
 }
 
