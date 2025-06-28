@@ -10,6 +10,39 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 
+//引入消息接口
+#include <geometry_msgs/msg/twist.h>//消息接口
+rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
+geometry_msgs__msg__Twist msg_cmd_vel;//订阅到的数据存储在这里
+
+
+Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
+PIDController pid_controller[2];//创建一个数组用于PID控制
+Kinematics kinematics;
+
+float target_linear_speed = 50.0; //单位 mm/s
+float target_angular_speed = 0.5; //单位 弧度/s
+float out_left_speed = 0.0;       //输出的是左右轮速度，不是反馈的左右轮速度
+float out_right_speed = 0.0;
+
+//回调函数
+void twist_callback(const void* msg_in)
+{
+  //将收到的消息指针转换成geometry_msgs_Twist类型的指针
+  const geometry_msgs__msg__Twist* msg = (const geometry_msgs__msg__Twist*)msg_in;
+  target_linear_speed = msg->linear.x * 1000;
+  target_angular_speed = msg->angular.z;
+
+  //测试运动学逆解
+  kinematics.kinematics_inverse(target_linear_speed,target_angular_speed,
+                                &out_left_speed,&out_right_speed);
+  Serial.printf("OUT:left_speed=%f,right_speed=%f\n",out_left_speed,out_right_speed);
+  pid_controller[0].uptate_target(out_left_speed);
+  pid_controller[1].uptate_target(out_right_speed);
+
+
+}
+
 //声明一些相关的结构体对象
 rcl_allocator_t allocator;//内存分配器。用于动态内存分配管理
 rclc_support_t support;//用于存储时钟，内存分配器和上下文，用于提供支持
@@ -31,8 +64,11 @@ void microros_task(void* args)
   //4.初始化结点
   rclc_node_init_default(&node,"robot_motion_control","",&support);
   //5.初始化执行器
-  unsigned int num_handles = 0;//订阅和计时器的数量，这是一个需要更改的参数
+  unsigned int num_handles = 1;//订阅和计时器的数量，这是一个需要更改的参数
   rclc_executor_init(&executor,&support.context,num_handles,&allocator);
+  //6.初始化订阅者，并将其添加到执行器中
+  rclc_subscription_init_best_effort(&sub_cmd_vel,&node,ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs,msg,Twist),"/cmd_vel");
+  rclc_executor_add_subscription(&executor,&sub_cmd_vel,&msg_cmd_vel,&twist_callback,ON_NEW_DATA);
   //循环执行
   rclc_executor_spin(&executor);
 }
@@ -59,14 +95,7 @@ void microros_task(void* args)
 //速度上限
 #define Speed_Limit 200
 
-Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
-PIDController pid_controller[2];//创建一个数组用于PID控制
-Kinematics kinematics;
 
-float target_linear_speed = 50.0; //单位 mm/s
-float target_angular_speed = 0.5; //单位 弧度/s
-float out_left_speed = 0.0;       //输出的是左右轮速度，不是反馈的左右轮速度
-float out_right_speed = 0.0;
 
 void setMotorSpeed(int in1, int in2, int pwm, int speed);
 void moveForward(int speed);
@@ -111,12 +140,7 @@ void setup()
   kinematics.set_wheel_distance(175);
   kinematics.set_motor_param(0,0.166812);
   kinematics.set_motor_param(1,0.166812);
-  //测试运动学逆解
-  kinematics.kinematics_inverse(target_linear_speed,target_angular_speed,
-                                &out_left_speed,&out_right_speed);
-  Serial.printf("OUT:left_speed=%f,right_speed=%f\n",out_left_speed,out_right_speed);
-  pid_controller[0].uptate_target(out_left_speed);
-  pid_controller[1].uptate_target(out_right_speed);
+  
 
 
   //创建一个任务来启动micro-ros的task
