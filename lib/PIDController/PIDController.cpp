@@ -21,7 +21,7 @@ float PIDController::update(float current){
 
     //限制积分范围
     if(error_sum_ > intergral_up_) error_sum_ = intergral_up_;
-    if(error_sum_ < -intergral_up_) error_sum_ = -intergral_up_;
+    if(error_sum_ < -intergral_up_) error_sum_ = -1*intergral_up_;
 
     derror_ = prev_error_ - error_;//计算误差变化率
     prev_error_ = error_;//更新上一次误差
