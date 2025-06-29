@@ -9,11 +9,21 @@
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
+//引入字符串内存分配管理工具
+#include <micro_ros_utilities/string_utilities.h>
 
 //引入消息接口
 #include <geometry_msgs/msg/twist.h>//消息接口
 rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
 geometry_msgs__msg__Twist msg_cmd_vel;//订阅到的数据存储在这里
+
+//引入里程计消息接口
+#include <nav_msgs/msg/odometry.h>
+rcl_publisher_t pub_odom;//创建一个里程计发布者
+nav_msgs__msg__Odometry msg_odom;//里程计消息存储到这里
+rcl_timer_t timer;//定时器，定时调用某个函数
+
+
 
 
 Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
@@ -21,11 +31,35 @@ PIDController pid_controller[2];//创建一个数组用于PID控制
 Kinematics kinematics;
 
 float target_linear_speed = 50.0; //单位 mm/s
-float target_angular_speed = 0.5; //单位 弧度/s
+float target_angular_speed = 0.9; //单位 弧度/s
 float out_left_speed = 0.0;       //输出的是左右轮速度，不是反馈的左右轮速度
 float out_right_speed = 0.0;
 
-//回调函数
+//定时器回调函数
+void timer_callback(rcl_timer_t* timer,int64_t last_call_time)
+{
+  //完成里程计的发布
+  odom_t odom = kinematics.get_odom();//获取当前的里程计
+  int64_t stamp = rmw_uros_epoch_millis();//获取当前的时间
+  msg_odom.header.stamp.sec = static_cast<int32_t>(stamp/1000);//秒部分
+  msg_odom.header.stamp.nanosec = static_cast<int32_t>((stamp%1000)*1e6);//纳秒部分
+  msg_odom.pose.pose.position.x = odom.x;
+  msg_odom.pose.pose.position.y = odom.y;
+  msg_odom.pose.pose.orientation.w = cos(odom.angle*0.5);
+  msg_odom.pose.pose.orientation.x = 0;
+  msg_odom.pose.pose.orientation.y = 0;
+  msg_odom.pose.pose.orientation.z = sin(odom.angle*0.5);
+  msg_odom.twist.twist.linear.x = odom.linear_speed;
+  msg_odom.twist.twist.angular.z = odom.angular_speed;//修复
+  //发布里程计，把数据发出去
+  if(rcl_publish(&pub_odom,&msg_odom,NULL)!=RCL_RET_OK)
+  {
+    Serial.println("error:odom pub failed");
+  }
+
+}
+
+//话题的回调函数
 void twist_callback(const void* msg_in)
 {
   //将收到的消息指针转换成geometry_msgs_Twist类型的指针
@@ -64,11 +98,25 @@ void microros_task(void* args)
   //4.初始化结点
   rclc_node_init_default(&node,"robot_motion_control","",&support);
   //5.初始化执行器
-  unsigned int num_handles = 1;//订阅和计时器的数量，这是一个需要更改的参数
+  unsigned int num_handles = 2;//订阅和计时器的数量，这是一个需要更改的参数
   rclc_executor_init(&executor,&support.context,num_handles,&allocator);
   //6.初始化订阅者，并将其添加到执行器中
   rclc_subscription_init_best_effort(&sub_cmd_vel,&node,ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs,msg,Twist),"/cmd_vel");
   rclc_executor_add_subscription(&executor,&sub_cmd_vel,&msg_cmd_vel,&twist_callback,ON_NEW_DATA);
+  //7.初始化msg
+  msg_odom.header.frame_id = micro_ros_string_utilities_set(msg_odom.header.frame_id,"odom");
+  msg_odom.child_frame_id = micro_ros_string_utilities_set(msg_odom.child_frame_id,"base_footprint");
+  //8.初始化发布者和定时器
+  rclc_publisher_init_best_effort(&pub_odom,&node,ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs,msg,Odometry),"/odom");
+  rclc_timer_init_default(&timer,&support,RCL_MS_TO_NS(50),timer_callback);
+  rclc_executor_add_timer(&executor,&timer);
+  //9.时间同步
+  while(!rmw_uros_epoch_synchronized())
+  {
+    rmw_uros_sync_session(1000);
+    delay(10);
+  }
+
   //循环执行
   rclc_executor_spin(&executor);
 }
@@ -138,10 +186,13 @@ void setup()
   pid_controller[1].out_limit(-Speed_Limit,Speed_Limit);
   //初始化运动学参数
   kinematics.set_wheel_distance(175);
-  kinematics.set_motor_param(0,0.166812);
-  kinematics.set_motor_param(1,0.166812);
+  kinematics.set_motor_param(0,0.1051566);
+  kinematics.set_motor_param(1,0.1051566);
   
-
+  msg_odom.pose.pose.orientation.x = 0;
+  msg_odom.pose.pose.orientation.y = 0;
+  msg_odom.pose.pose.orientation.z = 0;
+  msg_odom.pose.pose.orientation.w = 1;
 
   //创建一个任务来启动micro-ros的task
   xTaskCreate(microros_task,"micros_task",10240,NULL,1,NULL);

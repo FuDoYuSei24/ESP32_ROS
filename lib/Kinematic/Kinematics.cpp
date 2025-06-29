@@ -15,15 +15,18 @@ void Kinematics::set_motor_param(uint8_t id,float per_pluse_distancee)
 //运动学正解
 void Kinematics::kinematics_forward(float left_speed,float right_speed,float* out_linear_speed,float* out_angular_speed)
 {
-    *out_linear_speed = (left_speed + right_speed) / 2;
+    *out_linear_speed = (left_speed + right_speed) / 2000.0;
     *out_angular_speed = (right_speed - left_speed) / wheel_distance;
 }
 
 //运动学逆解
 void Kinematics::kinematics_inverse(float linear_speed,float angular_speed,float* out_left_speed,float* out_right_speed)
 {
-    *out_left_speed = linear_speed - angular_speed * wheel_distance / 2;
-    *out_right_speed = linear_speed + angular_speed * wheel_distance / 2;
+    // 修复：添加单位转换 (m/s -> mm/s)
+    float linear_mm_s = linear_speed * 1000.0;
+
+    *out_left_speed = linear_mm_s - (angular_speed * wheel_distance) / 2.0;
+    *out_right_speed = linear_mm_s + (angular_speed * wheel_distance) / 2.0;
 
 }
 
@@ -37,8 +40,8 @@ void Kinematics::update_motor_speed(uint64_t current_time,int32_t left_tick,int3
     delta_ticks[0] =  left_tick - motor_param[0].last_encoder_ticks;
     delta_ticks[1] = right_tick - motor_param[1].last_encoder_ticks;
     //更新当前速度
-    motor_param[0].motor_speed = delta_ticks[0] * 0.166812 / dt * 1000;
-    motor_param[1].motor_speed = delta_ticks[1] * 0.166812 / dt * 1000;
+    motor_param[0].motor_speed = delta_ticks[0] * 0.1051566 / dt * 1000;
+    motor_param[1].motor_speed = delta_ticks[1] * 0.1051566 / dt * 1000;
     //更新last_tick
     motor_param[0].last_encoder_ticks = left_tick;
     motor_param[1].last_encoder_ticks = right_tick;
@@ -91,8 +94,12 @@ void Kinematics::update_odom(uint16_t dt)
     odom.linear_speed = odom.linear_speed/1000.0;
 
     //角度积分
-    odom.angle += odom.angular_speed * dt_s;
+    float delta_angle = odom.angular_speed * dt_s;
+    odom.angle += delta_angle;
     TransAngleInPI(odom.angle,odom.angle);
+
+    // 修复：正确的角度归一化方法
+    odom.angle = atan2(sin(odom.angle), cos(odom.angle));
 
     //计算机器人行走的距离
     float delta_distance = odom.linear_speed * dt_s;
