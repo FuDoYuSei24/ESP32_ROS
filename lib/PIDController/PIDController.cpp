@@ -32,6 +32,7 @@ float PIDController::update(float current){
     if(output > out_max_) output = out_max_;
     if(output < out_min_) output = out_min_;
 
+    Serial.printf("output=%f\n",output);
     return output;
 
 }

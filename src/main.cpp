@@ -5,7 +5,7 @@
 #include "Kinematics.h"
 
 //引入micro-ROS和wifi相关库
-#include <wifi.h>
+#include <WiFi.h>
 #include <micro_ros_platformio.h>
 #include <rcl/rcl.h>
 #include <rclc/rclc.h>
@@ -70,27 +70,33 @@ void setup() {
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器
-  encoders[0].init(0, 33, 32); // 初始化第一个编码器，使用GPIO 32和33连接
+  encoders[0].init(0, 32, 33); // 初始化第一个编码器，使用GPIO 32和33连接
   encoders[1].init(1, 2, 4); // 初始化第二个编码器，使用GPIO 26和25连接
   //3.初始化电机的引脚设置
-  motor[0].attachMotor(0, 12, 14, 27);
-  motor[0].attachMotor(1, 13, 26, 25);
-  motor[1].attachMotor(0, 5, 19, 18);
-  motor[1].attachMotor(1, 23, 17, 16);
+  // motor[0].attachMotor(0, 12, 14, 27);
+  // motor[0].attachMotor(1, 13, 26, 25);
+  // motor[1].attachMotor(0, 5, 19, 18);
+  // motor[1].attachMotor(1, 23, 17, 16);
 
-  // 4.设置电机速度。这里设置为500
-  //motor[0].updateMotorSpeed(0, 500);
-  //motor[0].updateMotorSpeed(1, 500);
-  //motor[1].updateMotorSpeed(0, 500);
-  //motor[1].updateMotorSpeed(1, 500);
+ //(id,pwm,in1,in2)
+  motor[0].attachMotor(0, 5, 19, 18);
+  motor[0].attachMotor(1, 23, 17, 16);
+  motor[1].attachMotor(0, 12, 14, 27);
+  motor[1].attachMotor(1, 13, 26, 25);
+
+  //4.设置电机速度。这里初始化为0
+  motor[0].updateMotorSpeed(0, 0);
+  motor[0].updateMotorSpeed(1, 0);
+  motor[1].updateMotorSpeed(0, 0);
+  motor[1].updateMotorSpeed(1, 0);
 
   //5.初始化PID控制器
   pid_controller[0].update_pid(0.625,0.125,0.0);
   pid_controller[1].update_pid(0.625,0.125,0.0);
   pid_controller[0].out_limit(-500,500);
   pid_controller[1].out_limit(-500,500);
-  pid_controller[0].uptate_target(500);
-  pid_controller[1].uptate_target(500);
+  pid_controller[0].uptate_target(0);
+  pid_controller[1].uptate_target(0);
 
   //初始化运动学参数
   kinematics.set_wheel_distance(175);
@@ -103,7 +109,7 @@ void setup() {
   msg_odom.pose.pose.orientation.w = 1;
 
   //创建一个任务来启动micro-ros的task
-  xTaskCreate(microros_task,"micros_task",10240,NULL,1,NULL);
+  xTaskCreate(microros_task,"micros_task",16384,NULL,1,NULL);
 
  
 }
@@ -112,10 +118,17 @@ void loop() {
   
   delay(10);
   kinematics.update_motor_speed(millis(),encoders[0].getTicks(),encoders[1].getTicks());
-  motor[0].updateMotorSpeed(0, pid_controller[0].update(kinematics.get_motor_speed(0)));
-  motor[0].updateMotorSpeed(1, pid_controller[1].update(kinematics.get_motor_speed(1)));
-  motor[1].updateMotorSpeed(0, pid_controller[0].update(kinematics.get_motor_speed(0)));
-  motor[1].updateMotorSpeed(1, pid_controller[1].update(kinematics.get_motor_speed(1)));
+  Serial.printf("left_tick=%d,right_tick=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
+  // 获取当前速度
+  float left_speed = kinematics.get_motor_speed(0);
+  float right_speed = kinematics.get_motor_speed(1);
+   // 计算PID输出 - 每个电机使用独立的PID
+  int left_pwm = pid_controller[0].update(left_speed);
+  int right_pwm = pid_controller[1].update(right_speed);
+  motor[0].updateMotorSpeed(0, left_pwm);
+  motor[0].updateMotorSpeed(1, right_pwm);
+  motor[1].updateMotorSpeed(0, left_pwm);
+  motor[1].updateMotorSpeed(1, right_pwm);
   
   // 打印两个电机的速度
   //Serial.printf("speed1=%f,speed2=%f\n",current_speed[0],current_speed[1]);
@@ -143,6 +156,7 @@ void motorSpeedControl(){//函数用于控制电机速度（闭环控制）
   //调用PID获取动态的输出值
   int temp0 = pid_controller[0].update(current_speed[0]);
   int temp1 = pid_controller[1].update(current_speed[1]);
+  //Serial.printf("temp0=%d,temp1=%d\n",temp0,temp1);
   motor[0].updateMotorSpeed(0,temp0);
   motor[0].updateMotorSpeed(1,temp1);
   motor[1].updateMotorSpeed(0,temp0);
@@ -180,13 +194,15 @@ void twist_callback(const void* msg_in)
 {
   //将收到的消息指针转换成geometry_msgs_Twist类型的指针
   const geometry_msgs__msg__Twist* msg = (const geometry_msgs__msg__Twist*)msg_in;
-  target_linear_speed = msg->linear.x * 1000;
+  target_linear_speed = msg->linear.x;
   target_angular_speed = msg->angular.z;
 
   //测试运动学逆解
   kinematics.kinematics_inverse(target_linear_speed,target_angular_speed,
                                 &out_left_speed,&out_right_speed);
+
   Serial.printf("OUT:left_speed=%f,right_speed=%f\n",out_left_speed,out_right_speed);
+
   pid_controller[0].uptate_target(out_left_speed);
   pid_controller[1].uptate_target(out_right_speed);
 
@@ -197,37 +213,138 @@ void twist_callback(const void* msg_in)
 //单独创建一个任务运行micro-ROS 相当于一个线程
 void microros_task(void* args)
 {
-  //1.设置传输协议并延迟一段时间等待设置的完成
-  IPAddress agent_ip;
-  agent_ip.fromString("192.168.0.134");//设置上位机的地址
-  set_microros_wifi_transports("沙河汤臣一品","20050202",agent_ip,8888);//设置esp32连接的wifi以及要发送数据的上位机的ip和端口号
-  delay(2000);//等待wifi连接
-  //2.初始化内存分配器
-  allocator = rcl_get_default_allocator();//获取默认的内存分配器
-  //3.初始化支持模块
-  rclc_support_init(&support,0,NULL,&allocator);//初始化支持
-  //4.初始化结点
-  rclc_node_init_default(&node,"robot_motion_control","",&support);
-  //5.初始化执行器
-  unsigned int num_handles = 2;//订阅和计时器的数量，这是一个需要更改的参数
-  rclc_executor_init(&executor,&support.context,num_handles,&allocator);
-  //6.初始化订阅者，并将其添加到执行器中
-  rclc_subscription_init_best_effort(&sub_cmd_vel,&node,ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs,msg,Twist),"/cmd_vel");
-  rclc_executor_add_subscription(&executor,&sub_cmd_vel,&msg_cmd_vel,&twist_callback,ON_NEW_DATA);
-  //7.初始化sg
-  msg_odom.header.frame_id = micro_ros_string_utilities_set(msg_odom.header.frame_id,"odom");
-  msg_odom.child_frame_id = micro_ros_string_utilities_set(msg_odom.child_frame_id,"base_footprint");
-  //8.初始化发布者和定时器
-  rclc_publisher_init_best_effort(&pub_odom,&node,ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs,msg,Odometry),"/odom");
-  rclc_timer_init_default(&timer,&support,RCL_MS_TO_NS(50),timer_callback);
-  rclc_executor_add_timer(&executor,&timer);
-  //9.时间同步
-  while(!rmw_uros_epoch_synchronized())
-  {
-    rmw_uros_sync_session(1000);
-    delay(10);
+  // 使用char数组而不是const char*
+  char ssid[] = "沙河汤臣一品";
+  char password[] = "20050202";
+  IPAddress agent_ip(192, 168, 0, 134);
+  
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
   }
-
-  //循环执行
-  rclc_executor_spin(&executor);
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nWiFi connection failed!");
+    vTaskDelete(NULL); // 删除任务
+    return;
+  }
+  
+  Serial.println("\nWiFi connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+  
+  // 直接调用函数，不检查返回值
+  Serial.println("Setting up micro-ROS transport...");
+  set_microros_wifi_transports(ssid, password, agent_ip, 8888);
+  delay(2000);
+  
+  // 2. 初始化内存分配器
+  allocator = rcl_get_default_allocator();
+  
+  // 3. 初始化支持模块
+  rcl_ret_t ret = rclc_support_init(&support, 0, NULL, &allocator);
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_support_init error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  // 4. 初始化结点
+  ret = rclc_node_init_default(&node, "robot_motion_control", "", &support);
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_node_init_default error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  // 5. 初始化执行器
+  unsigned int num_handles = 2;
+  ret = rclc_executor_init(&executor, &support.context, num_handles, &allocator);
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_executor_init error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  // 6. 初始化订阅者
+  ret = rclc_subscription_init_best_effort(
+    &sub_cmd_vel,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
+    "/cmd_vel"
+  );
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_subscription_init_best_effort error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  ret = rclc_executor_add_subscription(&executor, &sub_cmd_vel, &msg_cmd_vel, &twist_callback, ON_NEW_DATA);
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_executor_add_subscription error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  // 7. 初始化里程计消息
+  msg_odom.header.frame_id = micro_ros_string_utilities_set(msg_odom.header.frame_id, "odom");
+  msg_odom.child_frame_id = micro_ros_string_utilities_set(msg_odom.child_frame_id, "base_footprint");
+  
+  // 8. 初始化发布者和定时器
+  ret = rclc_publisher_init_best_effort(
+    &pub_odom,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry),
+    "/odom"
+  );
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_publisher_init_best_effort error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  ret = rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(50), timer_callback);
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_timer_init_default error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  ret = rclc_executor_add_timer(&executor, &timer);
+  if (ret != RCL_RET_OK) {
+    Serial.printf("rclc_executor_add_timer error: %d\n", ret);
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  // 9. 时间同步
+  int sync_attempts = 0;
+  while (!rmw_uros_epoch_synchronized() && sync_attempts < 10) {
+    Serial.println("Synchronizing time with agent...");
+    rmw_uros_sync_session(1000);
+    delay(100);
+    sync_attempts++;
+  }
+  
+  if (!rmw_uros_epoch_synchronized()) {
+    Serial.println("Time synchronization failed!");
+    vTaskDelete(NULL);
+    return;
+  }
+  
+  Serial.println("micro-ROS setup complete!");
+  
+  // 循环执行
+  while (true) {
+    rcl_ret_t rc = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+    if (rc != RCL_RET_OK) {
+      Serial.printf("rclc_executor_spin_some error: %d\n", rc);
+      delay(100);
+    }
+  }
 }

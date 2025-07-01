@@ -41,7 +41,7 @@ class Kinematics
 
         odom_t& get_odom(); //获取里程计函数
 
-        void TransAngleInPI(float angle,float& out_angle);//
+        void TransAngleInPI(float& angle);
 
         void set_wheel_distance(float distance);//设置两个轮子之间的距离
 
