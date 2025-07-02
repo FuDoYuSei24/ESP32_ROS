@@ -1,9 +1,9 @@
+/*---------------------------------------------头文件引用区------------------------------------------------------*/
 #include <Arduino.h>
 #include "Esp32McpwmMotor.h"
 #include <Esp32PcntEncoder.h>
 #include "PIDController.h"
 #include "Kinematics.h"
-
 //引入micro-ROS和wifi相关库
 #include <WiFi.h>
 #include <micro_ros_platformio.h>
@@ -12,18 +12,18 @@
 #include <rclc/executor.h>
 //引入字符串内存分配管理工具
 #include <micro_ros_utilities/string_utilities.h>
-
 //引入消息接口
 #include <geometry_msgs/msg/twist.h>//消息接口
-rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
-geometry_msgs__msg__Twist msg_cmd_vel;//订阅到的数据存储在这里
-
 //引入里程计消息接口
 #include <nav_msgs/msg/odometry.h>
+/*---------------------------------------------变量声明区------------------------------------------------------*/
+//引入消息接口
+rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
+geometry_msgs__msg__Twist msg_cmd_vel;//订阅到的数据存储在这里
+//引入里程计消息接口
 rcl_publisher_t pub_odom;//创建一个里程计发布者
 nav_msgs__msg__Odometry msg_odom;//里程计消息存储到这里
 rcl_timer_t timer;//定时器，定时调用某个函数
-
 
 Esp32McpwmMotor motor[2];
 Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
@@ -35,9 +35,6 @@ rcl_allocator_t allocator;//内存分配器。用于动态内存分配管理
 rclc_support_t support;//用于存储时钟，内存分配器和上下文，用于提供支持
 rclc_executor_t executor;//执行器，用于管理订阅和计时器回调的执行
 rcl_node_t node;        //结点，用于创建结点
-
-
-
 
 int64_t last_ticks[2] = {0,0};//用于存储上一次读取的编码器数值
 int16_t delta_ticks[2] = {0,0};//用于存储这一次读取的编码器数值
@@ -52,7 +49,7 @@ float out_right_speed = 0.0;
 
 
 
-
+/*------------------------------------------函数声明区---------------------------------------------------------*/
 void motorSpeedControl();//函数用于控制电机速度（闭环控制）
 //定时器回调函数
 void timer_callback(rcl_timer_t* timer,int64_t last_call_time);
@@ -64,21 +61,21 @@ void microros_task(void* args);
 
 
 
-
+/*------------------------------------------SetUP函数---------------------------------------------------------*/
 void setup() {
   // 1.初始化串口
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器
-  encoders[0].init(0, 32, 33); // 初始化第一个编码器，使用GPIO 32和33连接
-  encoders[1].init(1, 2, 4); // 初始化第二个编码器，使用GPIO 26和25连接
+  encoders[0].init(0, 34, 35); // 初始化第一个编码器，使用GPIO 32和33连接
+  encoders[1].init(1, 2, 4); // 初始化第二个编码器，使用GPIO 2和4连接
   //3.初始化电机的引脚设置
   // motor[0].attachMotor(0, 12, 14, 27);
   // motor[0].attachMotor(1, 13, 26, 25);
-  // motor[1].attachMotor(0, 5, 19, 18);
+  // motor[1].attachMotor(0, 5, 19, 18); 
   // motor[1].attachMotor(1, 23, 17, 16);
 
- //(id,pwm,in1,in2)
+  //3.(id,pwm,in1,in2)
   motor[0].attachMotor(0, 5, 19, 18);
   motor[0].attachMotor(1, 23, 17, 16);
   motor[1].attachMotor(0, 12, 14, 27);
@@ -114,9 +111,11 @@ void setup() {
  
 }
 
+
+/*------------------------------------------LOOP函数---------------------------------------------------------*/
 void loop() {
   
-  delay(10);
+  Serial.printf("tick_0=%d,tick_1=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
   kinematics.update_motor_speed(millis(),encoders[0].getTicks(),encoders[1].getTicks());
   Serial.printf("left_tick=%d,right_tick=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
   // 获取当前速度
@@ -138,6 +137,9 @@ void loop() {
 
 
 
+
+/*-----------------------------------------函数定义区----------------------------------------------------------*/
+//电机控制函数
 void motorSpeedControl(){//函数用于控制电机速度（闭环控制）
   //计算时间差
   int16_t dt = millis() - last_update_time;
