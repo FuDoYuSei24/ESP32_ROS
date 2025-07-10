@@ -20,6 +20,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <U8g2lib.h>
 
 
 
@@ -60,7 +61,8 @@ float out_left_speed = 0.0;       //输出的是左右轮速度，不是反馈�
 float out_right_speed = 0.0;
 
 //创建一个OLED显示屏对象
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);//中文显示屏对象
 
 
 
@@ -128,28 +130,32 @@ void setup() {
   //8.初始化OLED显示屏
   Wire.begin(21, 22); //初始化I2C（特别注意SCK=SCL）SDA=21, SCK(SCL)=22
   Wire.setClock(100000); // 降低I2C速度提高兼容性  100kHz
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 尝试两种常见地址
-    Serial.println("Trying alternative address 0x3D...");
-    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
-      Serial.println("OLED initialization failed");
+  // if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 尝试两种常见地址
+  //   Serial.println("Trying alternative address 0x3D...");
+  //   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
+  //     Serial.println("OLED initialization failed");
   
-      Serial.print("SDA (GPIO21) voltage: ");// 修正的诊断代码
-      Serial.println(digitalRead(21) ? "HIGH" : "LOW");
+  //     Serial.print("SDA (GPIO21) voltage: ");// 修正的诊断代码
+  //     Serial.println(digitalRead(21) ? "HIGH" : "LOW");
       
-      Serial.print("SCK (GPIO22) voltage: ");
-      Serial.println(digitalRead(22) ? "HIGH" : "LOW");
+  //     Serial.print("SCK (GPIO22) voltage: ");
+  //     Serial.println(digitalRead(22) ? "HIGH" : "LOW");
       
-      while(1);
-    }
-  }
+  //     while(1);
+  //   }
+  // }
   
-  Serial.println("OLED initialized!");
-  display.clearDisplay();
-  display.setTextSize(1);// 字体大小
-  display.setTextColor(SSD1306_WHITE);//字体颜色
-  display.setCursor(1,0);//设置显示坐标
-  display.println("Hello VDD/SCK!");
-  display.display();
+  // Serial.println("OLED initialized!");
+  // display.clearDisplay();
+  // display.setTextSize(1);// 字体大小
+  // display.setTextColor(SSD1306_WHITE);//字体颜色
+  // display.setCursor(30,0);//设置显示坐标
+  // display.println("Hello VDD/SCK!");
+  // display.display();
+
+  //9.设置中文字体
+  u8g2.begin();
+  u8g2.setFont(u8g2_font_wqy12_t_gb2312); 
 
  
 }
@@ -178,18 +184,25 @@ void loop() {
                                      kinematics.get_odom().angle);
 
   // 更新OLED显示屏
-  display.clearDisplay();
-  display.setTextSize(1);     // 字体大小
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(4, 0);
-  display.print("Left_Speed: ");
-  display.print(left_speed);
-  display.print(" mm/s");
-
-  display.setCursor(4, 10);
-  display.print("Right_Speed: ");
-  display.print(right_speed);
-  display.print(" mm/s");
+  u8g2.clearBuffer();
+  
+  // 显示中文
+  u8g2.setCursor(0, 20);
+  u8g2.print("你好，世界");
+  
+  // 显示速度数据
+  u8g2.setFont(u8g2_font_6x10_tf);  // 切换为小字体（可选）
+  u8g2.setCursor(0, 40);
+  u8g2.print("L_Speed:");
+  u8g2.print(left_speed);
+  u8g2.print("mm/s");
+  
+  u8g2.setCursor(0, 55);
+  u8g2.print("R_Speed:");
+  u8g2.print(right_speed);
+  u8g2.print("mm/s");
+  
+  u8g2.sendBuffer();  // 刷新屏幕
 
 
 }
