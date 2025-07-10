@@ -16,6 +16,20 @@
 #include <geometry_msgs/msg/twist.h>//消息接口
 //引入里程计消息接口
 #include <nav_msgs/msg/odometry.h>
+//oled显示屏相关库
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+
+
+
+/*---------------------------------------------变量定义区------------------------------------------------------*/
+#define SCREEN_WIDTH 128    // OLED宽度
+#define SCREEN_HEIGHT 64    // OLED高度
+
+
+
 /*---------------------------------------------变量声明区------------------------------------------------------*/
 //引入消息接口
 rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
@@ -44,6 +58,9 @@ float target_linear_speed = 20.0; //单位 mm/s
 float target_angular_speed = 0.8; //单位 弧度/s
 float out_left_speed = 0.0;       //输出的是左右轮速度，不是反馈的左右轮速度
 float out_right_speed = 0.0;
+
+//创建一个OLED显示屏对象
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 
 
@@ -95,7 +112,7 @@ void setup() {
   pid_controller[0].uptate_target(0);
   pid_controller[1].uptate_target(0);
 
-  //初始化运动学参数
+  //6.初始化运动学参数
   kinematics.set_wheel_distance(175);
   kinematics.set_motor_param(0,0.1051566);
   kinematics.set_motor_param(1,0.1051566);
@@ -105,8 +122,34 @@ void setup() {
   msg_odom.pose.pose.orientation.z = 0;
   msg_odom.pose.pose.orientation.w = 1;
 
-  //创建一个任务来启动micro-ros的task
+  //7.创建一个任务来启动micro-ros的task
   xTaskCreate(microros_task,"micros_task",16384,NULL,1,NULL);
+
+  //8.初始化OLED显示屏
+  Wire.begin(21, 22); //初始化I2C（特别注意SCK=SCL）SDA=21, SCK(SCL)=22
+  Wire.setClock(100000); // 降低I2C速度提高兼容性  100kHz
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 尝试两种常见地址
+    Serial.println("Trying alternative address 0x3D...");
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
+      Serial.println("OLED initialization failed");
+  
+      Serial.print("SDA (GPIO21) voltage: ");// 修正的诊断代码
+      Serial.println(digitalRead(21) ? "HIGH" : "LOW");
+      
+      Serial.print("SCK (GPIO22) voltage: ");
+      Serial.println(digitalRead(22) ? "HIGH" : "LOW");
+      
+      while(1);
+    }
+  }
+  
+  Serial.println("OLED initialized!");
+  display.clearDisplay();
+  display.setTextSize(1);// 字体大小
+  display.setTextColor(SSD1306_WHITE);//字体颜色
+  display.setCursor(1,0);//设置显示坐标
+  display.println("Hello VDD/SCK!");
+  display.display();
 
  
 }
@@ -133,6 +176,22 @@ void loop() {
   //Serial.printf("speed1=%f,speed2=%f\n",current_speed[0],current_speed[1]);
   Serial.printf("x,y,yaw=%f,%f,%f\n",kinematics.get_odom().x,kinematics.get_odom().y,
                                      kinematics.get_odom().angle);
+
+  // 更新OLED显示屏
+  display.clearDisplay();
+  display.setTextSize(1);     // 字体大小
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(4, 0);
+  display.print("Left_Speed: ");
+  display.print(left_speed);
+  display.print(" mm/s");
+
+  display.setCursor(4, 10);
+  display.print("Right_Speed: ");
+  display.print(right_speed);
+  display.print(" mm/s");
+
+
 }
 
 
