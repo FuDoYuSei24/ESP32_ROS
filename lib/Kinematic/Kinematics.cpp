@@ -25,6 +25,11 @@ void Kinematics::kinematics_inverse(float linear_speed,float angular_speed,float
     // 只做一次转换：m/s → mm/s
     float linear_mm_s = linear_speed * 1000.0;
 
+    // // 添加转向辅助：当纯转向时添加基础线速度
+    // if (fabs(linear_speed) < 0.01 && fabs(angular_speed) > 0.1) {
+    //     linear_mm_s = 50.0; // 50mm/s的基础速度
+    // }
+
     *out_left_speed = linear_mm_s - (angular_speed * wheel_distance) / 2.0;
     *out_right_speed = linear_mm_s + (angular_speed * wheel_distance) / 2.0;
 }

@@ -61,8 +61,8 @@ float out_left_speed = 0.0;       //输出的是左右轮速度，不是反馈�
 float out_right_speed = 0.0;
 
 //创建一个OLED显示屏对象
-//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);//中文显示屏对象
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+//U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);//中文显示屏对象
 
 
 
@@ -107,15 +107,20 @@ void setup() {
   motor[1].updateMotorSpeed(1, 0);
 
   //5.初始化PID控制器
-  pid_controller[0].update_pid(0.625,0.125,0.0);
-  pid_controller[1].update_pid(0.625,0.125,0.0);
-  pid_controller[0].out_limit(-500,500);
-  pid_controller[1].out_limit(-500,500);
-  pid_controller[0].uptate_target(0);
+  pid_controller[0].update_pid(1.25,0.25,0.05);//pid参数
+  pid_controller[1].update_pid(1.25,0.25,0.05);
+
+  pid_controller[0].out_limit(-800,800);//设置输出限制
+  pid_controller[1].out_limit(-800,800);
+
+  pid_controller[0].uptate_target(0);//设置目标值为0
   pid_controller[1].uptate_target(0);
 
+  // pid_controller[0].set_friction_compensation(50.0);//设置静摩擦补偿值
+  // pid_controller[1].set_friction_compensation(50.0);
+
   //6.初始化运动学参数
-  kinematics.set_wheel_distance(175);
+  kinematics.set_wheel_distance(160.0); // 设置两个轮子之间的距离为160mm
   kinematics.set_motor_param(0,0.1051566);
   kinematics.set_motor_param(1,0.1051566);
     
@@ -130,6 +135,8 @@ void setup() {
   //8.初始化OLED显示屏
   Wire.begin(21, 22); //初始化I2C（特别注意SCK=SCL）SDA=21, SCK(SCL)=22
   Wire.setClock(100000); // 降低I2C速度提高兼容性  100kHz
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // I2C地址0x3C
+  display.clearDisplay();
   // if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 尝试两种常见地址
   //   Serial.println("Trying alternative address 0x3D...");
   //   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
@@ -153,9 +160,9 @@ void setup() {
   // display.println("Hello VDD/SCK!");
   // display.display();
 
-  //9.设置中文字体
-  u8g2.begin();
-  u8g2.setFont(u8g2_font_wqy12_t_gb2312); 
+  // //9.设置中文字体
+  // u8g2.begin();
+  // u8g2.setFont(u8g2_font_wqy12_t_gb2312); 
 
  
 }
@@ -184,26 +191,24 @@ void loop() {
                                      kinematics.get_odom().angle);
 
   // 更新OLED显示屏
-  u8g2.clearBuffer();
-  
-  // 显示中文
-  u8g2.setCursor(0, 20);
-  u8g2.print("你好，世界");
-  
-  // 显示速度数据
-  u8g2.setFont(u8g2_font_6x10_tf);  // 切换为小字体（可选）
-  u8g2.setCursor(0, 40);
-  u8g2.print("L_Speed:");
-  u8g2.print(left_speed);
-  u8g2.print("mm/s");
-  
-  u8g2.setCursor(0, 55);
-  u8g2.print("R_Speed:");
-  u8g2.print(right_speed);
-  u8g2.print("mm/s");
-  
-  u8g2.sendBuffer();  // 刷新屏幕
+  display.clearDisplay(); // 只在开始时清屏一次
+  display.setTextSize(1);     // 字体大小
+  display.setTextColor(SSD1306_WHITE);
 
+  // 显示左速度
+  display.setCursor(10, 15);
+  display.print("L_Speed:");
+  display.print(left_speed);
+  display.print("mm/s");
+
+  // 显示右速度
+  display.setCursor(10, 35);
+  display.print("R_Speed:");
+  display.print(right_speed);
+  display.print("mm/s");
+
+  // 只在所有内容都绘制完成后刷新一次屏幕
+  display.display();
 
 }
 
@@ -270,6 +275,12 @@ void twist_callback(const void* msg_in)
   const geometry_msgs__msg__Twist* msg = (const geometry_msgs__msg__Twist*)msg_in;
   target_linear_speed = msg->linear.x;
   target_angular_speed = msg->angular.z;
+
+  // // 确保有足够转向速度
+  // const float MIN_ANGULAR = 1.0; // 最小角速度(rad/s)
+  // if (fabs(target_angular_speed) > 0 && fabs(target_angular_speed) < MIN_ANGULAR) {
+  //     target_angular_speed = (target_angular_speed > 0) ? MIN_ANGULAR : -MIN_ANGULAR;
+  // }
 
   //测试运动学逆解
   kinematics.kinematics_inverse(target_linear_speed,target_angular_speed,

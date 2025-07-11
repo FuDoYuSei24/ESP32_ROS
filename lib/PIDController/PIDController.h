@@ -20,6 +20,7 @@ class PIDController{
         float error_sum_;//误差积分
         float derror_;//误差变化率
         float prev_error_;//上一次的误差
+        // float friction_compensation_ = 30.0; // 静摩擦补偿值
 
 
 
@@ -29,6 +30,9 @@ class PIDController{
        void update_pid(float kp,float ki,float kd);//更新PID的参数
        void reset();//重置PID
        void out_limit(float min,float max);//限制输出范围
+    //    void set_friction_compensation(float value) {
+    //     friction_compensation_ = value;
+    //    }
 
 };
 
