@@ -25,13 +25,20 @@
 
 
 
-/*---------------------------------------------变量定义区------------------------------------------------------*/
+/*---------------------------------------------宏定义区------------------------------------------------------*/
 #define SCREEN_WIDTH 128    // OLED宽度
 #define SCREEN_HEIGHT 64    // OLED高度
 
 
 
+
+
 /*---------------------------------------------变量声明区------------------------------------------------------*/
+// 使用char数组而不是const char*
+char ssid[] = "沙河汤臣一品";
+char password[] = "20050202";
+IPAddress agent_ip(192, 168, 0, 134);
+
 //引入消息接口
 rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
 geometry_msgs__msg__Twist msg_cmd_vel;//订阅到的数据存储在这里
@@ -95,10 +102,10 @@ void setup() {
   // motor[1].attachMotor(1, 23, 17, 16);
 
   //3.(id,pwm,in1,in2)
-  motor[0].attachMotor(0, 5, 19, 18);
-  motor[0].attachMotor(1, 23, 17, 16);
-  motor[1].attachMotor(0, 12, 14, 27);
-  motor[1].attachMotor(1, 13, 26, 25);
+  motor[0].attachMotor(0, 5, 18, 19);//左前
+  motor[0].attachMotor(1, 23, 16, 17);//右前
+  motor[1].attachMotor(0, 12, 14, 27);//左后
+  motor[1].attachMotor(1, 13, 26, 25);//右后
 
   //4.设置电机速度。这里初始化为0
   motor[0].updateMotorSpeed(0, 0);
@@ -195,20 +202,25 @@ void loop() {
   display.setTextSize(1);     // 字体大小
   display.setTextColor(SSD1306_WHITE);
 
-  // 显示左速度
-  display.setCursor(10, 15);
+  display.setCursor(5, 5); // 设置显示坐标
+  display.print("WIFI:");
+  display.print(WiFi.SSID()); // 显示当前连接的WiFi名称
+  display.setCursor(5, 15); // 设置显示坐标
+  display.print("IP:");
+  display.print(WiFi.localIP().toString()); // 显示当前WiFi的IP地址
+  
+
+  display.setCursor(5, 35);// 显示左速度
   display.print("L_Speed:");
   display.print(left_speed);
   display.print("mm/s");
 
-  // 显示右速度
-  display.setCursor(10, 35);
+  display.setCursor(5, 45); // 显示右速度
   display.print("R_Speed:");
   display.print(right_speed);
   display.print("mm/s");
 
-  // 只在所有内容都绘制完成后刷新一次屏幕
-  display.display();
+  display.display(); // 只在所有内容都绘制完成后刷新一次屏幕
 
 }
 
@@ -298,10 +310,10 @@ void twist_callback(const void* msg_in)
 //单独创建一个任务运行micro-ROS 相当于一个线程
 void microros_task(void* args)
 {
-  // 使用char数组而不是const char*
-  char ssid[] = "沙河汤臣一品";
-  char password[] = "20050202";
-  IPAddress agent_ip(192, 168, 0, 134);
+  // // 使用char数组而不是const char*
+  // char ssid[] = "沙河汤臣一品";
+  // char password[] = "20050202";
+  // IPAddress agent_ip(192, 168, 0, 134);
   
   Serial.println("Connecting to WiFi...");
   WiFi.begin(ssid, password);
