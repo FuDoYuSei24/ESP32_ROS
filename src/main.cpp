@@ -114,8 +114,8 @@ void setup() {
   motor[1].updateMotorSpeed(1, 0);
 
   //5.初始化PID控制器
-  pid_controller[0].update_pid(1.25,0.25,0.05);//pid参数
-  pid_controller[1].update_pid(1.25,0.25,0.05);
+  pid_controller[0].update_pid(0.625,0.125,0.0);//pid参数
+  pid_controller[1].update_pid(0.625,0.125,0.0);
 
   pid_controller[0].out_limit(-800,800);//设置输出限制
   pid_controller[1].out_limit(-800,800);
@@ -127,7 +127,7 @@ void setup() {
   // pid_controller[1].set_friction_compensation(50.0);
 
   //6.初始化运动学参数
-  kinematics.set_wheel_distance(160.0); // 设置两个轮子之间的距离为160mm
+  kinematics.set_wheel_distance(175.0); // 设置两个轮子之间的距离为175mm
   kinematics.set_motor_param(0,0.1051566);
   kinematics.set_motor_param(1,0.1051566);
     
@@ -188,8 +188,8 @@ void loop() {
   int left_pwm = pid_controller[0].update(left_speed);
   int right_pwm = pid_controller[1].update(right_speed);
   motor[0].updateMotorSpeed(0, left_pwm);
-  motor[0].updateMotorSpeed(1, right_pwm);
-  motor[1].updateMotorSpeed(0, left_pwm);
+  motor[0].updateMotorSpeed(1, left_pwm);
+  motor[1].updateMotorSpeed(0, right_pwm);
   motor[1].updateMotorSpeed(1, right_pwm);
   
   // 打印两个电机的速度
