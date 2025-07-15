@@ -70,6 +70,7 @@ float out_right_speed = 0.0;
 //创建一个OLED显示屏对象
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 //U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);//中文显示屏对象
+bool oledInitialized = false;
 
 
 
@@ -83,6 +84,10 @@ void timer_callback(rcl_timer_t* timer,int64_t last_call_time);
 void twist_callback(const void* msg_in);
 //单独创建一个任务运行micro-ROS 相当于一个线程
 void microros_task(void* args);
+//oled初始化函数
+void initOLED();
+//oled显示函数
+void updateDisplay();
 
 
 
@@ -103,9 +108,9 @@ void setup() {
 
   //3.(id,pwm,in1,in2)
   motor[0].attachMotor(0, 5, 18, 19);//左前A
-  motor[0].attachMotor(1, 23, 16, 17);//右前D
+  motor[0].attachMotor(1, 33, 16, 17);//右前D
   motor[1].attachMotor(0, 12, 14, 27);//左后B
-  motor[1].attachMotor(1, 13, 26, 25);//右后C
+  motor[1].attachMotor(1, 32, 26, 25);//右后C
 
   
   //4.设置电机速度。这里初始化为0
@@ -141,10 +146,7 @@ void setup() {
   xTaskCreate(microros_task,"micros_task",16384,NULL,1,NULL);
 
   //8.初始化OLED显示屏
-  Wire.begin(21, 22); //初始化I2C（特别注意SCK=SCL）SDA=21, SCK(SCL)=22
-  Wire.setClock(100000); // 降低I2C速度提高兼容性  100kHz
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // I2C地址0x3C
-  display.clearDisplay();
+  initOLED();
   // if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 尝试两种常见地址
   //   Serial.println("Trying alternative address 0x3D...");
   //   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
@@ -198,30 +200,12 @@ void loop() {
   Serial.printf("x,y,yaw=%f,%f,%f\n",kinematics.get_odom().x,kinematics.get_odom().y,
                                      kinematics.get_odom().angle);
 
-  // 更新OLED显示屏
-  display.clearDisplay(); // 只在开始时清屏一次
-  display.setTextSize(1);     // 字体大小
-  display.setTextColor(SSD1306_WHITE);
-
-  display.setCursor(5, 5); // 设置显示坐标
-  display.print("WIFI:");
-  display.print(WiFi.SSID()); // 显示当前连接的WiFi名称
-  display.setCursor(5, 15); // 设置显示坐标
-  display.print("IP:");
-  display.print(WiFi.localIP().toString()); // 显示当前WiFi的IP地址
-  
-
-  display.setCursor(5, 35);// 显示左速度
-  display.print("L_Speed:");
-  display.print(left_speed);
-  display.print("mm/s");
-
-  display.setCursor(5, 45); // 显示右速度
-  display.print("R_Speed:");
-  display.print(right_speed);
-  display.print("mm/s");
-
-  display.display(); // 只在所有内容都绘制完成后刷新一次屏幕
+  // 每10次循环更新一次显示，减少负载
+  static uint8_t displayCounter = 0;
+  if (++displayCounter >= 10) {
+    displayCounter = 0;
+    updateDisplay();
+  }
 
 }
 
@@ -445,4 +429,73 @@ void microros_task(void* args)
       delay(100);
     }
   }
+}
+
+//初始化oled
+void initOLED() {
+  Wire.begin(21, 22);
+  Wire.setClock(400000); // 提高I2C速度
+  
+  // 尝试常见地址
+  const uint8_t addresses[] = {0x3C, 0x3D};
+  for (int i = 0; i < sizeof(addresses)/sizeof(addresses[0]); i++) {
+    Wire.beginTransmission(addresses[i]);
+    if (Wire.endTransmission() == 0) {
+      Serial.printf("检测到OLED在地址0x%X\n", addresses[i]);
+      if (display.begin(SSD1306_SWITCHCAPVCC, addresses[i])) {
+        oledInitialized = true;
+        Serial.println("OLED初始化成功");
+        display.display();
+        delay(1000); // 显示启动画面
+        return;
+      }
+    }
+  }
+  Serial.println("OLED初始化失败!");
+}
+
+
+//oled显示函数
+void updateDisplay() {
+  if (!oledInitialized) return;
+  
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  
+  // 显示WiFi状态
+  display.setCursor(0, 0);
+  display.print("WiFi: ");
+  display.print(WiFi.SSID());
+  
+  // 显示IP地址
+  display.setCursor(0, 10);
+  display.print("IP: ");
+  display.print(WiFi.localIP().toString());
+  
+  // 显示电机速度
+  float left_speed = kinematics.get_motor_speed(0);
+  float right_speed = kinematics.get_motor_speed(1);
+  
+  display.setCursor(0, 20);
+  display.print("L: ");
+  display.print(left_speed);
+  display.print(" mm/s");
+  
+  display.setCursor(0, 30);
+  display.print("R: ");
+  display.print(right_speed);
+  display.print(" mm/s");
+  
+  // 显示ROS连接状态
+  display.setCursor(0, 40);
+  display.print("ROS: ");
+  display.print(rcl_context_is_valid(&support.context) ? "Connected" : "Disconnected");
+  
+  // 显示时间戳
+  display.setCursor(0, 50);
+  display.print("TS: ");
+  display.print(millis() / 1000);
+  
+  display.display();
 }
