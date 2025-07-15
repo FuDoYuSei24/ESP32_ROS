@@ -93,7 +93,7 @@ void setup() {
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器
-  encoders[0].init(0, 34, 35); // 初始化第一个编码器，使用GPIO 32和33连接
+  encoders[0].init(0, 34, 35); // 初始化第一个编码器，使用GPIO 32和33连接r
   encoders[1].init(1, 2, 4); // 初始化第二个编码器，使用GPIO 2和4连接
   //3.初始化电机的引脚设置
   // motor[0].attachMotor(0, 12, 14, 27);
@@ -102,11 +102,12 @@ void setup() {
   // motor[1].attachMotor(1, 23, 17, 16);
 
   //3.(id,pwm,in1,in2)
-  motor[0].attachMotor(0, 5, 18, 19);//左前
-  motor[0].attachMotor(1, 23, 16, 17);//右前
-  motor[1].attachMotor(0, 12, 14, 27);//左后
-  motor[1].attachMotor(1, 13, 26, 25);//右后
+  motor[0].attachMotor(0, 5, 18, 19);//左前A
+  motor[0].attachMotor(1, 23, 16, 17);//右前D
+  motor[1].attachMotor(0, 12, 14, 27);//左后B
+  motor[1].attachMotor(1, 13, 26, 25);//右后C
 
+  
   //4.设置电机速度。这里初始化为0
   motor[0].updateMotorSpeed(0, 0);
   motor[0].updateMotorSpeed(1, 0);
@@ -117,8 +118,8 @@ void setup() {
   pid_controller[0].update_pid(0.625,0.125,0.0);//pid参数
   pid_controller[1].update_pid(0.625,0.125,0.0);
 
-  pid_controller[0].out_limit(-800,800);//设置输出限制
-  pid_controller[1].out_limit(-800,800);
+  pid_controller[0].out_limit(-500,500);//设置输出限制
+  pid_controller[1].out_limit(-500,500);
 
   pid_controller[0].uptate_target(0);//设置目标值为0
   pid_controller[1].uptate_target(0);
@@ -187,10 +188,10 @@ void loop() {
    // 计算PID输出 - 每个电机使用独立的PID
   int left_pwm = pid_controller[0].update(left_speed);
   int right_pwm = pid_controller[1].update(right_speed);
-  motor[0].updateMotorSpeed(0, left_pwm);
-  motor[0].updateMotorSpeed(1, left_pwm);
-  motor[1].updateMotorSpeed(0, right_pwm);
-  motor[1].updateMotorSpeed(1, right_pwm);
+  motor[0].updateMotorSpeed(0, left_pwm);//左前A
+  motor[0].updateMotorSpeed(1, right_pwm);//右前D
+  motor[1].updateMotorSpeed(0, left_pwm);//左后B
+  motor[1].updateMotorSpeed(1, right_pwm);//右后C
   
   // 打印两个电机的速度
   //Serial.printf("speed1=%f,speed2=%f\n",current_speed[0],current_speed[1]);
