@@ -20,7 +20,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-//#include <U8g2lib.h>
+#include <U8g2lib.h>
 
 
 
@@ -123,8 +123,8 @@ void setup() {
   pid_controller[0].update_pid(0.625,0.125,0.0);//pid参数
   pid_controller[1].update_pid(0.625,0.125,0.0);
 
-  pid_controller[0].out_limit(-800,800);//设置输出限制
-  pid_controller[1].out_limit(-800,800);
+  pid_controller[0].out_limit(-500,500);//设置输出限制
+  pid_controller[1].out_limit(-500,500);
 
   pid_controller[0].uptate_target(0);//设置目标值为0
   pid_controller[1].uptate_target(0);
