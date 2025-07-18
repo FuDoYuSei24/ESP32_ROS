@@ -103,7 +103,7 @@ void setup() {
   //3.初始化电机的引脚设置
   // motor[0].attachMotor(0, 12, 14, 27);
   // motor[0].attachMotor(1, 13, 26, 25);
-  // motor[1].attachMotor(0, 5, 19, 18); 
+  // motor[1].attachMotor(0, 5, 19, 18); k
   // motor[1].attachMotor(1, 23, 17, 16);
 
   //3.(id,pwm,in1,in2)
