@@ -84,22 +84,32 @@ void Kinematics::TransAngleInPI(float& angle)
 
 void Kinematics::update_odom(uint16_t dt)
 {
-    float dt_s = float(dt) / 1000.0f;//单位：ms->s
-    //获取实时的角速度和线速度
-    //拿左右轮的实时速度进行运动学正解
-    this->kinematics_forward(motor_param[0].motor_speed,motor_param[1].motor_speed,
-                            &odom.linear_speed,&odom.angular_speed);
-    //odom.linear_speed = odom.linear_speed/1000.0;
-
-    //角度积分
+     float dt_s = float(dt) / 1000.0f; // 单位：ms->s
+  
+  // 获取实时的角速度和线速度
+  this->kinematics_forward(motor_param[0].motor_speed, motor_param[1].motor_speed,
+                          &odom.linear_speed, &odom.angular_speed);
+  
+  // 使用IMU的偏航角（如果可用）
+  if (mpu_initialized) {
+    // 直接使用IMU计算的偏航角
+    odom.angle = imu_yaw;
+    
+    // 从IMU计算角速度（可选）
+    // odom.angular_speed = (imu_yaw - prev_imu_yaw) / dt_s;
+    // prev_imu_yaw = imu_yaw;
+  } 
+  else {
+    // 没有IMU时使用编码器积分
     float delta_angle = odom.angular_speed * dt_s;
     odom.angle += delta_angle;
-    TransAngleInPI(odom.angle); // 直接修改原值
-
-
-    //计算机器人行走的距离
-    float delta_distance = odom.linear_speed * dt_s;
-    //计算坐标：行走距离分解到xy轴
-    odom.x += delta_distance * std::cos(odom.angle);
-    odom.y += delta_distance * std::sin(odom.angle);
+    TransAngleInPI(odom.angle); // 角度归一化
+  }
+  
+  // 计算机器人行走的距离
+  float delta_distance = odom.linear_speed * dt_s;
+  
+  // 计算坐标：行走距离分解到xy轴
+  odom.x += delta_distance * std::cos(odom.angle);
+  odom.y += delta_distance * std::sin(odom.angle);
 }

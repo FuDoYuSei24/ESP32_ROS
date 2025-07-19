@@ -21,7 +21,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 //#include <U8g2lib.h>
-
+//引入MPU6050相关库
+#include <Adafruit_MPU6050.h> // 添加MPU6050库
+#include <Adafruit_Sensor.h>
+#include <Filter.h> // 添加滤波器库
+#include <BasicLinearAlgebra.h> // 添加线性代数库
 
 
 
@@ -72,6 +76,13 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 //U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);//中文显示屏对象
 bool oledInitialized = false;
 
+// MPU6050相关变量
+Adafruit_MPU6050 mpu;
+bool mpu_initialized = false;
+float imu_yaw = 0.0; // IMU计算的偏航角
+unsigned long last_imu_time = 0;
+ExponentialFilter<float> yawFilter(0.2, 0); // 偏航角滤波器，参数可调
+
 
 
 
@@ -88,6 +99,10 @@ void microros_task(void* args);
 void initOLED();
 //oled显示函数
 void updateDisplay();
+// 更新IMU数据并计算偏航角
+void updateIMU();
+//IMU校准函数
+void calibrateIMU();
 
 
 
@@ -174,13 +189,54 @@ void setup() {
   // u8g2.begin();
   // u8g2.setFont(u8g2_font_wqy12_t_gb2312); 
 
+   // 9. 初始化MPU6050
+  if (!mpu.begin()) {
+    Serial.println("MPU6050初始化失败!");
+  } else {
+    Serial.println("MPU6050初始化成功");
+    // 配置MPU6050参数
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    Serial.print("加速度计范围: ");
+    switch (mpu.getAccelerometerRange()) {
+      case MPU6050_RANGE_2_G: Serial.println("±2G"); break;
+      case MPU6050_RANGE_4_G: Serial.println("±4G"); break;
+      case MPU6050_RANGE_8_G: Serial.println("±8G"); break;
+      case MPU6050_RANGE_16_G: Serial.println("±16G"); break;
+    }
+    
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    Serial.print("陀螺仪范围: ");
+    switch (mpu.getGyroRange()) {
+      case MPU6050_RANGE_250_DEG: Serial.println("±250°/s"); break;
+      case MPU6050_RANGE_500_DEG: Serial.println("±500°/s"); break;
+      case MPU6050_RANGE_1000_DEG: Serial.println("±1000°/s"); break;
+      case MPU6050_RANGE_2000_DEG: Serial.println("±2000°/s"); break;
+    }
+    
+    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    Serial.print("滤波器带宽: ");
+    switch (mpu.getFilterBandwidth()) {
+      case MPU6050_BAND_260_HZ: Serial.println("260Hz"); break;
+      case MPU6050_BAND_184_HZ: Serial.println("184Hz"); break;
+      case MPU6050_BAND_94_HZ: Serial.println("94Hz"); break;
+      case MPU6050_BAND_44_HZ: Serial.println("44Hz"); break;
+      case MPU6050_BAND_21_HZ: Serial.println("21Hz"); break;
+      case MPU6050_BAND_10_HZ: Serial.println("10Hz"); break;
+      case MPU6050_BAND_5_HZ: Serial.println("5Hz"); break;
+    }
+    
+    mpu_initialized = true;
+    last_imu_time = millis();
+  }
+
  
 }
 
 
 /*------------------------------------------LOOP函数---------------------------------------------------------*/
 void loop() {
-  
+  // 更新IMU数据
+  updateIMU();
   Serial.printf("tick_0=%d,tick_1=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
   kinematics.update_motor_speed(millis(),encoders[0].getTicks(),encoders[1].getTicks());
   Serial.printf("left_tick=%d,right_tick=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
@@ -206,6 +262,8 @@ void loop() {
     displayCounter = 0;
     updateDisplay();
   }
+  //校准IMU
+  calibrateIMU();
 
 }
 
@@ -498,4 +556,70 @@ void updateDisplay() {
   display.print(millis() / 1000);
   
   display.display();
+}
+
+// 更新IMU数据并计算偏航角
+void updateIMU() {
+  if (!mpu_initialized) return;
+  
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+  
+  // 计算时间差（秒）
+  unsigned long current_time = millis();
+  float dt = (current_time - last_imu_time) / 1000.0f;
+  last_imu_time = current_time;
+  
+  // 确保dt在合理范围内
+  if (dt <= 0 || dt > 0.1) {
+    dt = 0.01; // 默认10ms
+  }
+  
+  // 计算偏航角变化（陀螺仪Z轴积分）
+  // 注意：根据您的安装方向，可能需要调整符号
+  float yaw_rate = g.gyro.z; // 弧度/秒
+  
+  // 应用积分计算偏航角
+  imu_yaw += yaw_rate * dt;
+  
+  // 使用滤波器平滑数据
+  yawFilter.Filter(imu_yaw);
+  imu_yaw = yawFilter.Current();
+  
+  // 角度归一化到[-π, π]
+  while (imu_yaw > PI) imu_yaw -= 2 * PI;
+  while (imu_yaw < -PI) imu_yaw += 2 * PI;
+  
+  // 调试输出
+  static unsigned long last_debug = 0;
+  if (millis() - last_debug > 500) {
+    Serial.printf("IMU Yaw: %.2f rad (%.1f°)\n", imu_yaw, imu_yaw * 180 / PI);
+    last_debug = millis();
+  }
+}
+
+//IMU校准函数
+void calibrateIMU() {
+  if (!mpu_initialized) return;
+  
+  Serial.println("校准MPU6050...");
+  
+  // 收集500个样本计算平均值
+  const int samples = 500;
+  float gz_sum = 0.0;
+  
+  for (int i = 0; i < samples; i++) {
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    gz_sum += g.gyro.z;
+    delay(5);
+  }
+  
+  // 计算零偏
+  float gyro_bias_z = gz_sum / samples;
+  Serial.printf("陀螺仪Z轴零偏: %.6f rad/s\n", gyro_bias_z);
+  
+  // 设置零偏（需要修改库或软件补偿）
+  // 这里我们使用软件补偿
+  // 在updateIMU()函数中会使用这个值
 }
