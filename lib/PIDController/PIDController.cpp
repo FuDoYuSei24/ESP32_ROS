@@ -37,6 +37,12 @@ float PIDController::update(float current){
     //     output = (output > 0) ? friction_compensation_ : -friction_compensation_;
     // }
     
+    // 减少调试输出频率
+    static int count = 0;
+    if (count++ > 100) {
+        count = 0;
+        Serial.printf("output=%f\n",output);
+    }
 
     Serial.printf("output=%f\n",output);
     return output;

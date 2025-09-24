@@ -24,7 +24,7 @@
 //引入MPU6050相关库
 #include <Adafruit_MPU6050.h> // 添加MPU6050库
 #include <Adafruit_Sensor.h>
-#include <Filter.h> // 添加滤波器库
+#include "ExponentialFilter.h"
 #include <BasicLinearAlgebra.h> // 添加线性代数库
 
 
@@ -96,7 +96,7 @@ void twist_callback(const void* msg_in);
 //单独创建一个任务运行micro-ROS 相当于一个线程
 void microros_task(void* args);
 //oled初始化函数
-void initOLED();
+void InitOLED();
 //oled显示函数
 void updateDisplay();
 // 更新IMU数据并计算偏航角
@@ -113,12 +113,12 @@ void setup() {
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器
-  encoders[0].init(0, 34, 35); // 初始化第一个编码器，使用GPIO 32和33连接r
+  encoders[0].init(0, 34, 35); // 初始化第一个编码器，使用GPIO 32和33连接
   encoders[1].init(1, 2, 4); // 初始化第二个编码器，使用GPIO 2和4连接
   //3.初始化电机的引脚设置
   // motor[0].attachMotor(0, 12, 14, 27);
   // motor[0].attachMotor(1, 13, 26, 25);
-  // motor[1].attachMotor(0, 5, 19, 18); k
+  // motor[1].attachMotor(0, 5, 19, 18); 
   // motor[1].attachMotor(1, 23, 17, 16);
 
   //3.(id,pwm,in1,in2)
@@ -160,73 +160,38 @@ void setup() {
   //7.创建一个任务来启动micro-ros的task
   xTaskCreate(microros_task,"micros_task",16384,NULL,1,NULL);
 
-  //8.初始化OLED显示屏
-  initOLED();
-  // if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 尝试两种常见地址
-  //   Serial.println("Trying alternative address 0x3D...");
-  //   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
-  //     Serial.println("OLED initialization failed");
+  //8.初始化I2C总线
+  Wire.begin(21, 22); // SDA=GPIO21, SCL=GPIO22
+  Wire.setClock(100000); // 降低I2C速度以提高兼容性
   
-  //     Serial.print("SDA (GPIO21) voltage: ");// 修正的诊断代码
-  //     Serial.println(digitalRead(21) ? "HIGH" : "LOW");
-      
-  //     Serial.print("SCK (GPIO22) voltage: ");
-  //     Serial.println(digitalRead(22) ? "HIGH" : "LOW");
-      
-  //     while(1);
-  //   }
-  // }
   
-  // Serial.println("OLED initialized!");
-  // display.clearDisplay();
-  // display.setTextSize(1);// 字体大小
-  // display.setTextColor(SSD1306_WHITE);//字体颜色
-  // display.setCursor(30,0);//设置显示坐标
-  // display.println("Hello VDD/SCK!");
-  // display.display();
+  //9.初始化OLED显示屏
+  InitOLED();
 
-  // //9.设置中文字体
-  // u8g2.begin();
-  // u8g2.setFont(u8g2_font_wqy12_t_gb2312); 
-
-   // 9. 初始化MPU6050
-  if (!mpu.begin()) {
-    Serial.println("MPU6050初始化失败!");
+  
+  //10.初始化MPU6050
+  Serial.println("Initializing MPU6050...");
+  if (!mpu.begin(0x68)) {
+    Serial.println("Failed to find MPU6050 at 0x68, trying 0x69...");
+    if (!mpu.begin(0x69)) {
+      Serial.println("MPU6050 initialization failed!");
+    } else {
+      mpu_initialized = true;
+      Serial.println("MPU6050 found at 0x69!");
+    }
   } else {
-    Serial.println("MPU6050初始化成功");
-    // 配置MPU6050参数
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    Serial.print("加速度计范围: ");
-    switch (mpu.getAccelerometerRange()) {
-      case MPU6050_RANGE_2_G: Serial.println("±2G"); break;
-      case MPU6050_RANGE_4_G: Serial.println("±4G"); break;
-      case MPU6050_RANGE_8_G: Serial.println("±8G"); break;
-      case MPU6050_RANGE_16_G: Serial.println("±16G"); break;
-    }
-    
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    Serial.print("陀螺仪范围: ");
-    switch (mpu.getGyroRange()) {
-      case MPU6050_RANGE_250_DEG: Serial.println("±250°/s"); break;
-      case MPU6050_RANGE_500_DEG: Serial.println("±500°/s"); break;
-      case MPU6050_RANGE_1000_DEG: Serial.println("±1000°/s"); break;
-      case MPU6050_RANGE_2000_DEG: Serial.println("±2000°/s"); break;
-    }
-    
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    Serial.print("滤波器带宽: ");
-    switch (mpu.getFilterBandwidth()) {
-      case MPU6050_BAND_260_HZ: Serial.println("260Hz"); break;
-      case MPU6050_BAND_184_HZ: Serial.println("184Hz"); break;
-      case MPU6050_BAND_94_HZ: Serial.println("94Hz"); break;
-      case MPU6050_BAND_44_HZ: Serial.println("44Hz"); break;
-      case MPU6050_BAND_21_HZ: Serial.println("21Hz"); break;
-      case MPU6050_BAND_10_HZ: Serial.println("10Hz"); break;
-      case MPU6050_BAND_5_HZ: Serial.println("5Hz"); break;
-    }
-    
     mpu_initialized = true;
-    last_imu_time = millis();
+    Serial.println("MPU6050 found at 0x68!");
+  }
+  
+  if (mpu_initialized) {
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    Serial.println("MPU6050 configured successfully");
+    
+    // 初始校准
+    calibrateIMU();
   }
 
  
@@ -256,14 +221,14 @@ void loop() {
   Serial.printf("x,y,yaw=%f,%f,%f\n",kinematics.get_odom().x,kinematics.get_odom().y,
                                      kinematics.get_odom().angle);
 
-  // 每10次循环更新一次显示，减少负载
-  static uint8_t displayCounter = 0;
-  if (++displayCounter >= 10) {
-    displayCounter = 0;
+  // 每500毫秒更新一次OLED显示
+  static unsigned long lastDisplayUpdate = 0;
+  if (millis() - lastDisplayUpdate > 500) {
     updateDisplay();
+    lastDisplayUpdate = millis();
   }
-  //校准IMU
-  calibrateIMU();
+
+
 
 }
 
@@ -490,11 +455,11 @@ void microros_task(void* args)
 }
 
 //初始化oled
-void initOLED() {
+void InitOLED() {
   Wire.begin(21, 22);
   Wire.setClock(400000); // 提高I2C速度
   
-  // 尝试常见地址
+   // 尝试常见地址
   const uint8_t addresses[] = {0x3C, 0x3D};
   for (int i = 0; i < sizeof(addresses)/sizeof(addresses[0]); i++) {
     Wire.beginTransmission(addresses[i]);
@@ -503,8 +468,18 @@ void initOLED() {
       if (display.begin(SSD1306_SWITCHCAPVCC, addresses[i])) {
         oledInitialized = true;
         Serial.println("OLED初始化成功");
+        
+        // 显示启动画面
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        display.setCursor(0,0);
+        display.println("MPU6050 Test");
+        display.setCursor(0,10);
+        display.println("Initializing...");
         display.display();
-        delay(1000); // 显示启动画面
+        delay(1000);
+        
         return;
       }
     }
@@ -602,24 +577,40 @@ void updateIMU() {
 void calibrateIMU() {
   if (!mpu_initialized) return;
   
-  Serial.println("校准MPU6050...");
+  Serial.println("Calibrating MPU6050...");
   
   // 收集500个样本计算平均值
   const int samples = 500;
-  float gz_sum = 0.0;
+  float gx_sum = 0.0, gy_sum = 0.0, gz_sum = 0.0;
+  float ax_sum = 0.0, ay_sum = 0.0, az_sum = 0.0;
   
   for (int i = 0; i < samples; i++) {
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
+    
+    gx_sum += g.gyro.x;
+    gy_sum += g.gyro.y;
     gz_sum += g.gyro.z;
+    
+    ax_sum += a.acceleration.x;
+    ay_sum += a.acceleration.y;
+    az_sum += a.acceleration.z;
+    
     delay(5);
   }
   
   // 计算零偏
+  float gyro_bias_x = gx_sum / samples;
+  float gyro_bias_y = gy_sum / samples;
   float gyro_bias_z = gz_sum / samples;
-  Serial.printf("陀螺仪Z轴零偏: %.6f rad/s\n", gyro_bias_z);
   
-  // 设置零偏（需要修改库或软件补偿）
-  // 这里我们使用软件补偿
-  // 在updateIMU()函数中会使用这个值
+  float accel_bias_x = ax_sum / samples;
+  float accel_bias_y = ay_sum / samples;
+  float accel_bias_z = az_sum / samples - 9.81; // 减去重力加速度
+  
+  Serial.println("Calibration results:");
+  Serial.printf("Gyro bias: X=%.6f, Y=%.6f, Z=%.6f rad/s\n", gyro_bias_x, gyro_bias_y, gyro_bias_z);
+  Serial.printf("Accel bias: X=%.6f, Y=%.6f, Z=%.6f m/s^2\n", accel_bias_x, accel_bias_y, accel_bias_z);
+  
+  // 保存校准值（在实际应用中应该保存到EEPROM）
 }

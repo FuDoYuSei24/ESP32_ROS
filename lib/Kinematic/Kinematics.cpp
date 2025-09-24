@@ -1,4 +1,5 @@
 #include "Kinematics.h"
+#include <cmath> // 添加 cmath 头文件支持数学函数
 
 //设置轮子之间的距离
 void Kinematics::set_wheel_distance(float distance)
@@ -95,9 +96,6 @@ void Kinematics::update_odom(uint16_t dt)
     // 直接使用IMU计算的偏航角
     odom.angle = imu_yaw;
     
-    // 从IMU计算角速度（可选）
-    // odom.angular_speed = (imu_yaw - prev_imu_yaw) / dt_s;
-    // prev_imu_yaw = imu_yaw;
   } 
   else {
     // 没有IMU时使用编码器积分
@@ -113,3 +111,4 @@ void Kinematics::update_odom(uint16_t dt)
   odom.x += delta_distance * std::cos(odom.angle);
   odom.y += delta_distance * std::sin(odom.angle);
 }
+
