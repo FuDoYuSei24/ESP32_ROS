@@ -32,16 +32,16 @@
 /*---------------------------------------------宏定义区------------------------------------------------------*/
 #define SCREEN_WIDTH 128    // OLED宽度
 #define SCREEN_HEIGHT 64    // OLED高度
-
-
+#define PUBLISH_TIMEOUT 3000  // 心跳检测：3秒发布不成功认为断开
+#define AGENT_CHECK_INTERVAL 1000  // 心跳检测：每1秒主动检查一次Agent连接
 
 
 
 /*---------------------------------------------变量声明区------------------------------------------------------*/
 // 使用char数组而不是const char*
-char ssid[] = "沙河汤臣一品";
-char password[] = "20050202";
-IPAddress agent_ip(192, 168, 0, 134);
+char ssid[] = "fudoyusei";
+char password[] = "12345678";
+IPAddress agent_ip(192, 168, 196, 191);//同一个wifi下的上位机IP地址
 
 //引入消息接口
 rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
@@ -73,7 +73,6 @@ float out_right_speed = 0.0;
 
 //创建一个OLED显示屏对象
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-//U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);//中文显示屏对象
 bool oledInitialized = false;
 
 // MPU6050相关变量
@@ -83,7 +82,12 @@ float imu_yaw = 0.0; // IMU计算的偏航角
 unsigned long last_imu_time = 0;
 ExponentialFilter<float> yawFilter(0.2, 0); // 偏航角滤波器，参数可调
 
-
+//心跳检测相关变量
+bool wifi_connected = false;
+String ip_address = "Connecting...";
+bool microros_connected = false;
+unsigned long last_successful_publish = 0;
+unsigned long last_agent_check = 0;
 
 
 
@@ -279,10 +283,42 @@ void timer_callback(rcl_timer_t* timer,int64_t last_call_time)
   msg_odom.pose.pose.orientation.z = sin(odom.angle*0.5);
   msg_odom.twist.twist.linear.x = odom.linear_speed;
   msg_odom.twist.twist.angular.z = odom.angular_speed;//修复
+
+  //借助里程计的发布进行连接心跳检测
   //发布里程计，把数据发出去
-  if(rcl_publish(&pub_odom,&msg_odom,NULL)!=RCL_RET_OK)
+  if(rcl_publish(&pub_odom,&msg_odom,NULL)==RCL_RET_OK)//里程计发布成功
+  {
+    last_successful_publish = millis();
+    // 只有在发布成功时才认为连接正常
+    if (!microros_connected) {
+      microros_connected = true;
+      Serial.println("Agent connection established!");
+    }
+  }
+  else
   {
     Serial.println("error:odom pub failed");
+  }
+  
+  // 主动检查Agent连接状态（每1秒检查一次）
+  if (millis() - last_agent_check > AGENT_CHECK_INTERVAL) {
+    last_agent_check = millis();
+    
+    // 检查是否超时
+    if (millis() - last_successful_publish > PUBLISH_TIMEOUT) {
+      if (microros_connected) {
+        Serial.println("Agent connection lost - timeout!");
+        microros_connected = false;
+      }
+    } else {
+      // 检查网络连接状态
+      if (WiFi.status() != WL_CONNECTED) {
+        if (microros_connected) {
+          Serial.println("WiFi disconnected!");
+          microros_connected = false;
+        }
+      }
+    }
   }
 
 }
@@ -318,11 +354,7 @@ void twist_callback(const void* msg_in)
 //单独创建一个任务运行micro-ROS 相当于一个线程
 void microros_task(void* args)
 {
-  // // 使用char数组而不是const char*
-  // char ssid[] = "沙河汤臣一品";
-  // char password[] = "20050202";
-  // IPAddress agent_ip(192, 168, 0, 134);
-  
+
   Serial.println("Connecting to WiFi...");
   WiFi.begin(ssid, password);
   
@@ -343,6 +375,11 @@ void microros_task(void* args)
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
   
+  // 更新WiFi状态和IP地址
+  wifi_connected = true;  
+  ip_address = WiFi.localIP().toString();  // 确保这里使用ip_address
+  updateDisplay();
+
   // 直接调用函数，不检查返回值
   Serial.println("Setting up micro-ROS transport...");
   set_microros_wifi_transports(ssid, password, agent_ip, 8888);
@@ -443,12 +480,30 @@ void microros_task(void* args)
   }
   
   Serial.println("micro-ROS setup complete!");
+
+  // 初始化连接状态并立即更新OLED显示
+  microros_connected = true;
+  last_successful_publish = millis();
+  last_agent_check = millis();
+  updateDisplay();
   
   // 循环执行
   while (true) {
+    // 检查WiFi连接状态
+    if (WiFi.status() != WL_CONNECTED) {
+        if (microros_connected) {
+            Serial.println("WiFi connection lost in main loop!");
+            microros_connected = false;
+        }
+    }
     rcl_ret_t rc = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
     if (rc != RCL_RET_OK) {
       Serial.printf("rclc_executor_spin_some error: %d\n", rc);
+      // 如果执行器出现错误，可能表示连接问题
+      if (microros_connected) {
+          microros_connected = false;
+          Serial.println("Executor error - agent may be disconnected");
+      }
       delay(100);
     }
   }
@@ -474,9 +529,11 @@ void InitOLED() {
         display.setTextSize(1);
         display.setTextColor(SSD1306_WHITE);
         display.setCursor(0,0);
-        display.println("MPU6050 Test");
+        display.println("Robot Controller");
         display.setCursor(0,10);
-        display.println("Initializing...");
+        display.println("Starting...");
+        display.setCursor(0,20);
+        display.println("Connect WiFi...");
         display.display();
         delay(1000);
         
@@ -496,39 +553,62 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
-  // 显示WiFi状态
+  // 第1行: WiFi状态和信号强度
   display.setCursor(0, 0);
-  display.print("WiFi: ");
-  display.print(WiFi.SSID());
+  display.print("WiFi:");
+  if (WiFi.status() == WL_CONNECTED) {
+    display.print("OK");
+    // 显示信号强度
+    int rssi = WiFi.RSSI();
+    display.print("(");
+    display.print(rssi);
+    display.print(")");
+  } else {
+    display.print("NO");
+  }
   
-  // 显示IP地址
+  // 第2行: IP地址 (显示最后一段)
   display.setCursor(0, 10);
-  display.print("IP: ");
-  display.print(WiFi.localIP().toString());
+  display.print("IP:");
+  if (ip_address.length() > 0 && ip_address != "Connecting...") {
+    int lastDot = ip_address.lastIndexOf('.');
+    if (lastDot != -1) {
+      display.print(ip_address.substring(lastDot + 1));
+    } else {
+      display.print(ip_address);
+    }
+  } else {
+    display.print("---");
+  }
   
-  // 显示电机速度
-  float left_speed = kinematics.get_motor_speed(0);
-  float right_speed = kinematics.get_motor_speed(1);
-  
+  // 第3行: micro-ROS Agent连接状态
   display.setCursor(0, 20);
-  display.print("L: ");
-  display.print(left_speed);
-  display.print(" mm/s");
+  display.print("Agent:");
+  if (microros_connected) {
+    display.print("CONN");
+  } else {
+    display.print("DISCONN");
+  }
   
+  // 第4行: 左电机速度
+  float left_speed = kinematics.get_motor_speed(0);
   display.setCursor(0, 30);
-  display.print("R: ");
-  display.print(right_speed);
-  display.print(" mm/s");
+  display.print("L:");
+  display.print(left_speed, 0);
+  display.print("mm/s");
   
-  // 显示ROS连接状态
+  // 第5行: 右电机速度
+  float right_speed = kinematics.get_motor_speed(1);
   display.setCursor(0, 40);
-  display.print("ROS: ");
-  display.print(rcl_context_is_valid(&support.context) ? "Connected" : "Disconnected");
+  display.print("R:");
+  display.print(right_speed, 0);
+  display.print("mm/s");
   
-  // 显示时间戳
+  // 第6行: 运行时间
   display.setCursor(0, 50);
-  display.print("TS: ");
+  display.print("Up:");
   display.print(millis() / 1000);
+  display.print("s");
   
   display.display();
 }
