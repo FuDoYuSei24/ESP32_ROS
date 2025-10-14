@@ -41,7 +41,7 @@
 // 使用char数组而不是const char*
 char ssid[] = "fudoyusei";
 char password[] = "12345678";
-IPAddress agent_ip(192, 168, 196, 191);//同一个wifi下的上位机IP地址
+IPAddress agent_ip(192, 168, 36, 191);//同一个wifi下的上位机IP地址
 
 //引入消息接口
 rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
@@ -117,8 +117,8 @@ void setup() {
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器
-  encoders[0].init(0, 34, 35); // 初始化第一个编码器，使用GPIO 32和33连接
-  encoders[1].init(1, 2, 4); // 初始化第二个编码器，使用GPIO 2和4连接
+  encoders[0].init(0, 15, 2); // 初始化第一个编码器，使用GPIO 32和33连接
+  encoders[1].init(1, 27, 14); // 初始化第二个编码器，使用GPIO 2和4连接
   //3.初始化电机的引脚设置
   // motor[0].attachMotor(0, 12, 14, 27);
   // motor[0].attachMotor(1, 13, 26, 25);
@@ -126,10 +126,10 @@ void setup() {
   // motor[1].attachMotor(1, 23, 17, 16);
 
   //3.(id,pwm,in1,in2)
-  motor[0].attachMotor(0, 5, 18, 19);//左前A
-  motor[0].attachMotor(1, 33, 16, 17);//右前D
-  motor[1].attachMotor(0, 12, 14, 27);//左后B
-  motor[1].attachMotor(1, 32, 26, 25);//右后C
+  motor[0].attachMotor(0, 4, 17, 16);//左前A
+  motor[0].attachMotor(1, 26, 25, 33);//右前D
+  motor[1].attachMotor(0, 19, 5, 18);//左后B
+  motor[1].attachMotor(1, 34, 35, 32);//右后C
 
   
   //4.设置电机速度。这里初始化为0
@@ -553,33 +553,15 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   
-  // 第1行: WiFi状态和信号强度
+  // 第1行：显示WiFi状态
   display.setCursor(0, 0);
-  display.print("WiFi:");
-  if (WiFi.status() == WL_CONNECTED) {
-    display.print("OK");
-    // 显示信号强度
-    int rssi = WiFi.RSSI();
-    display.print("(");
-    display.print(rssi);
-    display.print(")");
-  } else {
-    display.print("NO");
-  }
+  display.print("WiFi: ");
+  display.print(WiFi.SSID());
   
-  // 第2行: IP地址 (显示最后一段)
+  // 第2行：显示IP地址
   display.setCursor(0, 10);
-  display.print("IP:");
-  if (ip_address.length() > 0 && ip_address != "Connecting...") {
-    int lastDot = ip_address.lastIndexOf('.');
-    if (lastDot != -1) {
-      display.print(ip_address.substring(lastDot + 1));
-    } else {
-      display.print(ip_address);
-    }
-  } else {
-    display.print("---");
-  }
+  display.print("IP: ");
+  display.print(WiFi.localIP().toString());
   
   // 第3行: micro-ROS Agent连接状态
   display.setCursor(0, 20);
