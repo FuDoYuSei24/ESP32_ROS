@@ -39,9 +39,9 @@
 
 /*---------------------------------------------变量声明区------------------------------------------------------*/
 // 使用char数组而不是const char*
-char ssid[] = "fudoyusei";
-char password[] = "12345678";
-IPAddress agent_ip(192, 168, 36, 191);//同一个wifi下的上位机IP地址
+char ssid[] = "沙河汤臣一品";
+char password[] = "20050202";
+IPAddress agent_ip(192, 168, 0, 134);//同一个wifi下的上位机IP地址
 
 //引入消息接口
 rcl_subscription_t sub_cmd_vel;//创建一个消息的订阅者
@@ -117,20 +117,14 @@ void setup() {
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器
-  encoders[0].init(0, 15, 2); // 初始化第一个编码器，使用GPIO 32和33连接
-  encoders[1].init(1, 27, 14); // 初始化第二个编码器，使用GPIO 2和4连接
-  //3.初始化电机的引脚设置
-  // motor[0].attachMotor(0, 12, 14, 27);
-  // motor[0].attachMotor(1, 13, 26, 25);
-  // motor[1].attachMotor(0, 5, 19, 18); 
-  // motor[1].attachMotor(1, 23, 17, 16);
+  encoders[0].init(0, 2, 15); // 初始化第一个编码器，使用GPIO 2和15连接编码器A相和B相
+  encoders[1].init(1, 34, 35); // 初始化第二个编码器，使用GPIO 34和35连接编码器A相和B相
 
-  //3.(id,pwm,in1,in2)
+  //3.初始化电机的引脚设置(id,pwm,in1,in2)
   motor[0].attachMotor(0, 4, 17, 16);//左前A
-  motor[0].attachMotor(1, 26, 25, 33);//右前D
+  motor[0].attachMotor(1, 14, 27, 26);//右前D
   motor[1].attachMotor(0, 19, 5, 18);//左后B
-  motor[1].attachMotor(1, 34, 35, 32);//右后C
-
+  motor[1].attachMotor(1, 32, 33, 25);//右后C
   
   //4.设置电机速度。这里初始化为0
   motor[0].updateMotorSpeed(0, 0);
@@ -148,8 +142,6 @@ void setup() {
   pid_controller[0].uptate_target(0);//设置目标值为0
   pid_controller[1].uptate_target(0);
 
-  // pid_controller[0].set_friction_compensation(50.0);//设置静摩擦补偿值
-  // pid_controller[1].set_friction_compensation(50.0);
 
   //6.初始化运动学参数
   kinematics.set_wheel_distance(175.0); // 设置两个轮子之间的距离为175mm
@@ -331,12 +323,6 @@ void twist_callback(const void* msg_in)
   const geometry_msgs__msg__Twist* msg = (const geometry_msgs__msg__Twist*)msg_in;
   target_linear_speed = msg->linear.x;
   target_angular_speed = msg->angular.z;
-
-  // // 确保有足够转向速度
-  // const float MIN_ANGULAR = 1.0; // 最小角速度(rad/s)
-  // if (fabs(target_angular_speed) > 0 && fabs(target_angular_speed) < MIN_ANGULAR) {
-  //     target_angular_speed = (target_angular_speed > 0) ? MIN_ANGULAR : -MIN_ANGULAR;
-  // }
 
   //测试运动学逆解
   kinematics.kinematics_inverse(target_linear_speed,target_angular_speed,
