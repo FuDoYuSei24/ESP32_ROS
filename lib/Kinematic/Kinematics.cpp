@@ -1,6 +1,13 @@
 #include "Kinematics.h"
 #include <cmath> // 添加 cmath 头文件支持数学函数
 
+// 辅助函数：计算数组平均值
+float average(float arr[], int size) {
+    float sum = 0;
+    for (int i = 0; i < size; i++) sum += arr[i];
+    return sum / size;
+}
+
 //设置轮子之间的距离
 void Kinematics::set_wheel_distance(float distance)
 {
@@ -26,8 +33,6 @@ void Kinematics::kinematics_inverse(float linear_speed,float angular_speed,float
     // 只做一次转换：m/s → mm/s
     float linear_mm_s = linear_speed * 1000.0;
 
-
-
     *out_left_speed = linear_mm_s - (angular_speed * wheel_distance) / 2.0;
     *out_right_speed = linear_mm_s + (angular_speed * wheel_distance) / 2.0;
 }
@@ -39,13 +44,26 @@ void Kinematics::update_motor_speed(uint64_t current_time,int32_t left_tick,int3
     uint32_t dt = current_time - last_update_time;//单位：ms
     if(dt == 0) return; // 避免除以0
 
+    // 使用移动平均滤波计算速度
+    static float left_speed_history[3] = {0};
+    static float right_speed_history[3] = {0};
+    static int history_index = 0;
+
     //计算编码器当前与上一次读取的数值之差
     delta_ticks[0] =  left_tick - motor_param[0].last_encoder_ticks;
     delta_ticks[1] = right_tick - motor_param[1].last_encoder_ticks;
-    //更新当前速度
-    motor_param[0].motor_speed = delta_ticks[0] * 0.1051566 / dt * 1000;
-    motor_param[1].motor_speed = delta_ticks[1] * 0.1051566 / dt * 1000;
-    //Serial.printf("left_tick=%d,right_tick=%d\n",delta_ticks[0],delta_ticks[1]);
+
+    // 计算原始速度
+    float left_raw_speed = delta_ticks[0] * motor_param[0].per_pulse_distance / dt * 1000;
+    float right_raw_speed = delta_ticks[1] * motor_param[1].per_pulse_distance / dt * 1000;
+    
+    // 移动平均滤波
+    left_speed_history[history_index] = left_raw_speed;
+    right_speed_history[history_index] = right_raw_speed;
+    history_index = (history_index + 1) % 3;
+    
+    motor_param[0].motor_speed = (left_speed_history[0] + left_speed_history[1] + left_speed_history[2]) / 3;
+    motor_param[1].motor_speed = (right_speed_history[0] + right_speed_history[1] + right_speed_history[2]) / 3;
 
     //更新last_tick
     motor_param[0].last_encoder_ticks = left_tick;

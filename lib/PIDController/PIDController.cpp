@@ -8,34 +8,40 @@ PIDController::PIDController(float kp,float ki,float kd){
     kd_ = kd;
 }
 
-//float update(float current)//提供当前值，返回下次输出值，也就是PID的结果
-//void uptate_target(float target);//更新目标值
-//void update_pid(float kp,float ki,float kd);//更新PID的参数
-//void reset();//重置PID
-//void out_limit(float );//限制输出范围
 
 float PIDController::update(float current){
 
     error_ = target_ - current;//计算error。目标值值减去当前值
-    error_sum_ += error_;//对error进行积分
 
-    //限制积分范围
-    if(error_sum_ > intergral_up_) error_sum_ = intergral_up_;
-    if(error_sum_ < -intergral_up_) error_sum_ = -1*intergral_up_;
+    // 积分分离：误差大时不积分
+    if (fabs(error_) < integral_separation_) {
+        error_sum_ += error_;
+        // 积分限幅
+        if(error_sum_ > intergral_up_) error_sum_ = intergral_up_;
+        if(error_sum_ < -intergral_up_) error_sum_ = -intergral_up_;
+    } else {
+        error_sum_ = 0; // 误差大时清零积分
+    }
+
 
     derror_ = prev_error_ - error_;//计算误差变化率
     prev_error_ = error_;//更新上一次误差
 
     //计算PID结果
     float output = kp_ * error_ + ki_ * error_sum_ + kd_ * derror_;
+
+    // 改进的死区补偿 - 更平滑
+    if (fabs(output) < output_deadzone_ && fabs(target_) > 0) {
+        // 使用目标速度的比例补偿，而不是固定值
+        float compensation = output_deadzone_ * (target_ > 0 ? 1 : -1);
+        output = compensation;
+    }
+
+    
     //限制PID结果范围
     if(output > out_max_) output = out_max_;
     if(output < out_min_) output = out_min_;
 
-    //  // 添加静摩擦补偿
-    // if (fabs(output) > 0 && fabs(output) < friction_compensation_) {
-    //     output = (output > 0) ? friction_compensation_ : -friction_compensation_;
-    // }
     
     // 减少调试输出频率
     static int count = 0;
@@ -70,6 +76,9 @@ void PIDController::reset(){
     intergral_up_ = 2500;
     out_max_ = 0;
     out_min_ = 0;
+
+    output_deadzone_ = 15.0;
+    integral_separation_ = 20.0;
 }
 
 void PIDController::out_limit(float min,float max){

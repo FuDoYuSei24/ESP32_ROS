@@ -89,6 +89,11 @@ bool microros_connected = false;
 unsigned long last_successful_publish = 0;
 unsigned long last_agent_check = 0;
 
+// 目标速度平滑滤波变量
+float smoothed_left_target = 0;
+float smoothed_right_target = 0;
+unsigned long last_smooth_time = 0;
+
 
 
 /*------------------------------------------函数声明区---------------------------------------------------------*/
@@ -107,6 +112,8 @@ void updateDisplay();
 void updateIMU();
 //IMU校准函数
 void calibrateIMU();
+// 检测是否应该完全停止函数
+bool shouldStopCompletely();
 
 
 
@@ -117,8 +124,8 @@ void setup() {
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器
-  encoders[0].init(0, 2, 15); // 初始化第一个编码器，使用GPIO 2和15连接编码器A相和B相
-  encoders[1].init(1, 34, 35); // 初始化第二个编码器，使用GPIO 34和35连接编码器A相和B相
+  encoders[0].init(0, 2, 15); // 初始化第一个编码器，使用GPIO2和15连接编码器A相和B相
+  encoders[1].init(1, 34, 35); // 初始化第二个编码器，使用GPIO34和35连接编码器A相和B相
 
   //3.初始化电机的引脚设置(id,pwm,in1,in2)
   motor[0].attachMotor(0, 4, 17, 16);//左前A
@@ -133,20 +140,27 @@ void setup() {
   motor[1].updateMotorSpeed(1, 0);
 
   //5.初始化PID控制器
-  pid_controller[0].update_pid(0.625,0.125,0.0);//pid参数
-  pid_controller[1].update_pid(0.625,0.125,0.0);
+  pid_controller[0].update_pid(0.8,0.005,0.001);//pid参数
+  pid_controller[1].update_pid(0.8,0.005,0.001);
 
   pid_controller[0].out_limit(-800,800);//设置输出限制
   pid_controller[1].out_limit(-800,800);
+
+  pid_controller[0].set_deadzone(15.0);// 设置非线性PID参数
+  pid_controller[1].set_deadzone(15.0);
+  pid_controller[0].set_integral_separation(20.0);
+  pid_controller[1].set_integral_separation(20.0);
 
   pid_controller[0].uptate_target(0);//设置目标值为0
   pid_controller[1].uptate_target(0);
 
 
   //6.初始化运动学参数
+  //轮子转一圈编码器的脉冲数为1600
+  //轮子直径为83mm，则每个脉冲的前进距离为80*3.14/1600=0.157079mm
   kinematics.set_wheel_distance(175.0); // 设置两个轮子之间的距离为175mm
-  kinematics.set_motor_param(0,0.1051566);
-  kinematics.set_motor_param(1,0.1051566);
+  kinematics.set_motor_param(0,0.1570796);
+  kinematics.set_motor_param(1,0.1570796);
     
   msg_odom.pose.pose.orientation.x = 0;
   msg_odom.pose.pose.orientation.y = 0;
@@ -198,19 +212,63 @@ void setup() {
 void loop() {
   // 更新IMU数据
   updateIMU();
+
+  // 目标速度平滑滤波
+  unsigned long current_time = millis();
+  if (current_time - last_smooth_time > 20) { // 50Hz平滑
+      float smooth_factor = 0.3; // 平滑系数，可调整
+      
+      smoothed_left_target = smoothed_left_target * (1 - smooth_factor) + 
+                            pid_controller[0].get_target() * smooth_factor;
+      smoothed_right_target = smoothed_right_target * (1 - smooth_factor) + 
+                             pid_controller[1].get_target() * smooth_factor;
+      
+      pid_controller[0].uptate_target(smoothed_left_target);
+      pid_controller[1].uptate_target(smoothed_right_target);
+      
+      last_smooth_time = current_time;
+  }
+
   Serial.printf("tick_0=%d,tick_1=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
   kinematics.update_motor_speed(millis(),encoders[0].getTicks(),encoders[1].getTicks());
   Serial.printf("left_tick=%d,right_tick=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
+
   // 获取当前速度
   float left_speed = kinematics.get_motor_speed(0);
   float right_speed = kinematics.get_motor_speed(1);
-   // 计算PID输出 - 每个电机使用独立的PID
-  int left_pwm = pid_controller[0].update(left_speed);
-  int right_pwm = pid_controller[1].update(right_speed);
-  motor[0].updateMotorSpeed(0, left_pwm);//左前A
-  motor[0].updateMotorSpeed(1, right_pwm);//右前D
-  motor[1].updateMotorSpeed(0, left_pwm);//左后B
-  motor[1].updateMotorSpeed(1, right_pwm);//右后C
+
+ if (shouldStopCompletely() && fabs(left_speed) < 5 && fabs(right_speed) < 5) {
+      // 完全停止时，直接输出0，避免PID震荡
+      motor[0].updateMotorSpeed(0, 0);
+      motor[0].updateMotorSpeed(1, 0);
+      motor[1].updateMotorSpeed(0, 0);
+      motor[1].updateMotorSpeed(1, 0);
+      
+      // 重置PID积分项
+      pid_controller[0].reset_integral();
+      pid_controller[1].reset_integral();
+      
+      Serial.println("Complete stop - motors disabled");
+  } else {
+      // 正常的PID控制逻辑
+      int left_pwm = pid_controller[0].update(left_speed);
+      int right_pwm = pid_controller[1].update(right_speed);
+      
+      motor[0].updateMotorSpeed(0, left_pwm);//左前A
+      motor[0].updateMotorSpeed(1, right_pwm);//右前D
+      motor[1].updateMotorSpeed(0, left_pwm);//左后B
+      motor[1].updateMotorSpeed(1, right_pwm);//右后C
+      
+      // 调试输出
+      static unsigned long last_debug = 0;
+      if (millis() - last_debug > 200) {
+          Serial.printf("Target: L=%.1f, R=%.1f | Actual: L=%.1f, R=%.1f | PWM: L=%d, R=%d\n",
+                       pid_controller[0].get_target(), pid_controller[1].get_target(),
+                       left_speed, right_speed,
+                       left_pwm, right_pwm);
+          last_debug = millis();
+      }
+  }
   
   // 打印两个电机的速度
   //Serial.printf("speed1=%f,speed2=%f\n",current_speed[0],current_speed[1]);
@@ -224,7 +282,7 @@ void loop() {
     lastDisplayUpdate = millis();
   }
 
-
+  delay(10); // 添加小延迟，避免循环过快
 
 }
 
@@ -241,8 +299,9 @@ void motorSpeedControl(){//函数用于控制电机速度（闭环控制）
   delta_ticks[0] = encoders[0].getTicks() - last_ticks[0];
   delta_ticks[1] = encoders[1].getTicks() - last_ticks[1];
   //更新速度
-  current_speed[0] = delta_ticks[0] * 0.1051566 / dt * 1000;
-  current_speed[1] = delta_ticks[1] * 0.1051566 / dt * 1000;
+  //要乘上每个编码器脉冲对应的前进距离0.1570796mm
+  current_speed[0] = delta_ticks[0] * 0.1570796 / dt * 1000;
+  current_speed[1] = delta_ticks[1] * 0.1570796 / dt * 1000;
   //更新last_tick
   last_ticks[0] = encoders[0].getTicks();
   last_ticks[1] = encoders[1].getTicks();
@@ -328,12 +387,12 @@ void twist_callback(const void* msg_in)
   kinematics.kinematics_inverse(target_linear_speed,target_angular_speed,
                                 &out_left_speed,&out_right_speed);
 
-  Serial.printf("OUT:left_speed=%f,right_speed=%f\n",out_left_speed,out_right_speed);
+  Serial.printf("New command: linear=%.2f, angular=%.2f -> OUT:left_speed=%f,right_speed=%f\n",
+                target_linear_speed, target_angular_speed, out_left_speed, out_right_speed);
 
+  // 直接更新PID目标，平滑滤波在loop()中处理
   pid_controller[0].uptate_target(out_left_speed);
   pid_controller[1].uptate_target(out_right_speed);
-
-
 }
 
 
@@ -661,4 +720,9 @@ void calibrateIMU() {
   Serial.printf("Accel bias: X=%.6f, Y=%.6f, Z=%.6f m/s^2\n", accel_bias_x, accel_bias_y, accel_bias_z);
   
   // 保存校准值（在实际应用中应该保存到EEPROM）
+}
+
+// 检测是否应该完全停止
+bool shouldStopCompletely() {
+    return (fabs(target_linear_speed) < 0.01 && fabs(target_angular_speed) < 0.01);
 }
