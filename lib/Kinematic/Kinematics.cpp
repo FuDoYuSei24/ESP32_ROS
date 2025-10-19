@@ -35,6 +35,11 @@ void Kinematics::kinematics_inverse(float linear_speed,float angular_speed,float
 
     *out_left_speed = linear_mm_s - (angular_speed * wheel_distance) / 2.0;
     *out_right_speed = linear_mm_s + (angular_speed * wheel_distance) / 2.0;
+
+    // 处理纯线速度情况，避免浮点误差
+    if(angular_speed==0){
+        *out_left_speed = *out_right_speed;
+    }
 }
 
 //输入：左右轮脉冲数，当前时间；输出：更新的电机速度和编码器数据
