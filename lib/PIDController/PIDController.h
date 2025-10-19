@@ -21,9 +21,7 @@ class PIDController{
         float derror_;//误差变化率
         float prev_error_;//上一次的误差
         // float friction_compensation_ = 30.0; // 静摩擦补偿值
-        // 添加非线性PID参数
-        float output_deadzone_ = 5.0;    // 输出死区
-        float integral_separation_ = 10.0; // 积分分离阈值
+
 
 
 
@@ -34,10 +32,7 @@ class PIDController{
        void reset();//重置PID
        void out_limit(float min,float max);//限制输出范围
 
-       void set_deadzone(float deadzone) { output_deadzone_ = deadzone; }
-       void set_integral_separation(float threshold) { integral_separation_ = threshold; }
-       void reset_integral() { error_sum_ = 0; }
-       float get_target() { return target_; }
+
 
 };
 

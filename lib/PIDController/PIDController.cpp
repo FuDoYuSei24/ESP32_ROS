@@ -12,16 +12,8 @@ PIDController::PIDController(float kp,float ki,float kd){
 float PIDController::update(float current){
 
     error_ = target_ - current;//计算error。目标值值减去当前值
+    error_sum_ += error_;//对error进行积分
 
-    // 积分分离：误差大时不积分
-    if (fabs(error_) < integral_separation_) {
-        error_sum_ += error_;
-        // 积分限幅
-        if(error_sum_ > intergral_up_) error_sum_ = intergral_up_;
-        if(error_sum_ < -intergral_up_) error_sum_ = -intergral_up_;
-    } else {
-        error_sum_ = 0; // 误差大时清零积分
-    }
 
 
     derror_ = prev_error_ - error_;//计算误差变化率
@@ -29,13 +21,6 @@ float PIDController::update(float current){
 
     //计算PID结果
     float output = kp_ * error_ + ki_ * error_sum_ + kd_ * derror_;
-
-    // 改进的死区补偿 - 更平滑
-    if (fabs(output) < output_deadzone_ && fabs(target_) > 0) {
-        // 使用目标速度的比例补偿，而不是固定值
-        float compensation = output_deadzone_ * (target_ > 0 ? 1 : -1);
-        output = compensation;
-    }
 
     
     //限制PID结果范围
@@ -77,8 +62,6 @@ void PIDController::reset(){
     out_max_ = 0;
     out_min_ = 0;
 
-    output_deadzone_ = 15.0;
-    integral_separation_ = 20.0;
 }
 
 void PIDController::out_limit(float min,float max){
