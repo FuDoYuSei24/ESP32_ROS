@@ -142,8 +142,9 @@ void setup() {
   //5.初始化PID控制器
   //0.6, 0.004, 0.06还行
   //0.625,0.125,0.0
-  pid_controller[0].update_pid(0.675, 0.0001, 0.06);//pid参数
-  pid_controller[1].update_pid(0.675, 0.0001, 0.06);
+  //0.15,0.001,0.01
+  pid_controller[0].update_pid(0.15, 0.00015, 0.03);//pid参数
+  pid_controller[1].update_pid(0.15, 0.00015, 0.03);
 
 
   pid_controller[0].out_limit(-800,800);//设置输出限制
@@ -156,10 +157,10 @@ void setup() {
 
   //6.初始化运动学参数
   //轮子转一圈编码器的脉冲数为1600
-  //轮子直径为83mm，则每个脉冲的前进距离为80*3.14/1600=0.157079mm
+  //轮子直径为83mm，则每个脉冲的前进距离为80*3.14/1600=0.1570796mm
   kinematics.set_wheel_distance(175.0); // 设置两个轮子之间的距离为175mm
-  kinematics.set_motor_param(0,0.1051566);
-  kinematics.set_motor_param(1,0.1051566);
+  kinematics.set_motor_param(0,0.1570796);
+  kinematics.set_motor_param(1,0.1570796);
     
   msg_odom.pose.pose.orientation.x = 0;
   msg_odom.pose.pose.orientation.y = 0;
@@ -259,8 +260,8 @@ void motorSpeedControl(){//函数用于控制电机速度（闭环控制）
   delta_ticks[1] = encoders[1].getTicks() - last_ticks[1];
   //更新速度
   //要乘上每个编码器脉冲对应的前进距离0.1570796mm
-  current_speed[0] = delta_ticks[0] * 0.1051566 / dt * 1000;
-  current_speed[1] = delta_ticks[1] * 0.1051566 / dt * 1000;
+  current_speed[0] = delta_ticks[0] * 0.1570796 / dt * 1000;
+  current_speed[1] = delta_ticks[1] * 0.1570796 / dt * 1000;
   //更新last_tick
   last_ticks[0] = encoders[0].getTicks();
   last_ticks[1] = encoders[1].getTicks();
