@@ -5,9 +5,12 @@
 #include <Adafruit_Sensor.h>
 
 // WiFi credentials and agent IP (moved from main.cpp)
-char ssid[] = "沙河汤臣一品";
-char password[] = "20050202";
-IPAddress agent_ip(192, 168, 0, 134);
+// char ssid[] = "沙河汤臣一品";
+// char password[] = "20050202";
+// IPAddress agent_ip(192, 168, 0, 134);
+char ssid[] = "fudoyusei";
+char password[] = "12345678";
+IPAddress agent_ip(192, 168, 112, 191);
 
 // micro-ROS related globals (definitions)
 rcl_subscription_t sub_cmd_vel;
@@ -44,6 +47,9 @@ void twist_callback(const void* msg_in)
 
   // 订阅回调只负责将目标速度传给 PID/运动学层，具体的 PID 目标更新在其他模块完成（main.cpp 中仍有 PIDController）
   // 这里仍保留 msg_cmd_vel 以便于外部检查或复用
+  extern PIDController pid_controller[2]; // 需要声明外部变量
+  pid_controller[0].update_target(out_left_speed);
+  pid_controller[1].update_target(out_right_speed);
   msg_cmd_vel = *msg;
 
 }
@@ -198,7 +204,7 @@ void microros_task(void* args)
   init_mpu6050_node(&node, &support, &executor);
   //15.时间同步
   int sync_attempts = 0;
-  while (!rmw_uros_epoch_synchronized() && sync_attempts < 10) {
+  while (!rmw_uros_epoch_synchronized() && sync_attempts < 30) {
     Serial.println("Synchronizing time with agent...");
     rmw_uros_sync_session(1000);
     delay(100);
