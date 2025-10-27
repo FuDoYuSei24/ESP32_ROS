@@ -27,10 +27,6 @@ Esp32McpwmMotor motor[2];
 Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
 PIDController pid_controller[2];//创建一个数组用于PID控制
 Kinematics kinematics;//运动学对象
-// 添加外部声明
-extern bool microros_connected;
-extern bool wifi_connected;
-extern String ip_address;
 //声明一些相关的结构体对象
 int64_t last_ticks[2] = {0,0};//用于存储上一次读取的编码器数值
 int16_t delta_ticks[2] = {0,0};//用于存储这一次读取的编码器数值
@@ -49,10 +45,22 @@ bool mpu_initialized = false;
 float imu_yaw = 0.0; // IMU计算的偏航角
 unsigned long last_imu_time = 0;
 ExponentialFilter<float> yawFilter(0.2, 0); // 偏航角滤波器，参数可调
+// MPU6050 数据变量 - 添加这些定义
+float imu_angular_velocity_x = 0.0;
+float imu_angular_velocity_y = 0.0;
+float imu_angular_velocity_z = 0.0;
+float imu_linear_acceleration_x = 0.0;
+float imu_linear_acceleration_y = 0.0;
+float imu_linear_acceleration_z = 0.0;
 // 目标速度平滑滤波变量
 float smoothed_left_target = 0;
 float smoothed_right_target = 0;
 unsigned long last_smooth_time = 0;
+
+// 添加外部声明
+extern bool microros_connected;
+extern bool wifi_connected;
+extern String ip_address;
 
 /*------------------------------------------函数声明区---------------------------------------------------------*/
 void motorSpeedControl();//函数用于控制电机速度（闭环控制）
@@ -99,7 +107,7 @@ void setup() {
   pid_controller[1].out_limit(-800,800);
 
   pid_controller[0].update_target(0);//设置目标值为0
-  pid_controller[1].uptate_target(0);
+  pid_controller[1].update_target(0);
 
 
   //6.初始化运动学参数
@@ -320,6 +328,15 @@ void updateIMU() {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
   
+  // 保存原始数据供Micro-ROS使用
+  imu_angular_velocity_x = g.gyro.x;
+  imu_angular_velocity_y = g.gyro.y;
+  imu_angular_velocity_z = g.gyro.z;
+  
+  imu_linear_acceleration_x = a.acceleration.x;
+  imu_linear_acceleration_y = a.acceleration.y;
+  imu_linear_acceleration_z = a.acceleration.z;
+  
   // 计算时间差（秒）
   unsigned long current_time = millis();
   float dt = (current_time - last_imu_time) / 1000.0f;
@@ -331,10 +348,7 @@ void updateIMU() {
   }
   
   // 计算偏航角变化（陀螺仪Z轴积分）
-  // 注意：根据您的安装方向，可能需要调整符号
   float yaw_rate = g.gyro.z; // 弧度/秒
-  
-  // 应用积分计算偏航角
   imu_yaw += yaw_rate * dt;
   
   // 使用滤波器平滑数据
@@ -349,6 +363,10 @@ void updateIMU() {
   static unsigned long last_debug = 0;
   if (millis() - last_debug > 500) {
     Serial.printf("IMU Yaw: %.2f rad (%.1f°)\n", imu_yaw, imu_yaw * 180 / PI);
+    Serial.printf("Gyro: X=%.2f, Y=%.2f, Z=%.2f rad/s\n", 
+                  imu_angular_velocity_x, imu_angular_velocity_y, imu_angular_velocity_z);
+    Serial.printf("Accel: X=%.2f, Y=%.2f, Z=%.2f m/s²\n", 
+                  imu_linear_acceleration_x, imu_linear_acceleration_y, imu_linear_acceleration_z);
     last_debug = millis();
   }
 }

@@ -27,7 +27,7 @@ class PIDController{
 
     public:
        float update(float current);//提供当前值，返回下次输出值，也就是PID的结果
-       void uptate_target(float target);//更新目标值
+       void update_target(float target);//更新目标值
        void update_pid(float kp,float ki,float kd);//更新PID的参数
        void reset();//重置PID
        void out_limit(float min,float max);//限制输出范围

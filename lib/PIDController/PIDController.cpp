@@ -40,7 +40,7 @@ float PIDController::update(float current){
 
 }
 
-void PIDController::uptate_target(float target){
+void PIDController::update_target(float target){
     target_ = target;
 }
 

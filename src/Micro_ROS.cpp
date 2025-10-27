@@ -1,5 +1,6 @@
 #include "Micro_ROS.h"
 #include "Kinematics.h"
+#include "MPU6050_Node.h"
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 
@@ -97,6 +98,7 @@ void timer_callback(rcl_timer_t* timer,int64_t last_call_time)
 // microros 任务：连接 WiFi、设置 transport、初始化 micro-ROS、启动执行器循环
 void microros_task(void* args)
 {
+  //1.wifi链接
   Serial.println("Connecting to WiFi...");
   WiFi.begin(ssid, password);
   int attempts = 0;
@@ -113,21 +115,21 @@ void microros_task(void* args)
   Serial.println("\nWiFi connected!");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
-
-  // 更新显示（main.cpp 中的 updateDisplay）
+  //2.更新显示（main.cpp 中的 updateDisplay）
   updateDisplay();
-
+  //3.设置micro-ROS的WiFi传输
   set_microros_wifi_transports(ssid, password, agent_ip, 8888);
   delay(2000);
-
+  //4.初始化内存分配器
   allocator = rcl_get_default_allocator();
+  //5.初始化支持模块
   rcl_ret_t ret = rclc_support_init(&support, 0, NULL, &allocator);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_support_init error: %d\n", ret);
     vTaskDelete(NULL);
     return;
   }
-
+  //6.初始化节点、执行器、订阅者、发布者和定时器
   ret = rclc_node_init_default(&node, "robot_motion_control", "", &support);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_node_init_default error: %d\n", ret);
@@ -135,7 +137,8 @@ void microros_task(void* args)
     return;
   }
 
-  unsigned int num_handles = 2;
+  //7.初始化执行器
+  unsigned int num_handles = 3;//订阅者+定时器（由总节点数决定）
   ret = rclc_executor_init(&executor, &support.context, num_handles, &allocator);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_executor_init error: %d\n", ret);
@@ -143,6 +146,7 @@ void microros_task(void* args)
     return;
   }
 
+  //8.初始化订阅者
   ret = rclc_subscription_init_best_effort(
     &sub_cmd_vel,
     &node,
@@ -154,17 +158,17 @@ void microros_task(void* args)
     vTaskDelete(NULL);
     return;
   }
-
+  //9.将订阅者添加到执行器
   ret = rclc_executor_add_subscription(&executor, &sub_cmd_vel, &msg_cmd_vel, &twist_callback, ON_NEW_DATA);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_executor_add_subscription error: %d\n", ret);
     vTaskDelete(NULL);
     return;
   }
-
+  //10.初始化里程计信息
   msg_odom.header.frame_id = micro_ros_string_utilities_set(msg_odom.header.frame_id, "odom");
   msg_odom.child_frame_id = micro_ros_string_utilities_set(msg_odom.child_frame_id, "base_footprint");
-
+  //11.初始化里程计发布者
   ret = rclc_publisher_init_best_effort(
     &pub_odom,
     &node,
@@ -176,21 +180,23 @@ void microros_task(void* args)
     vTaskDelete(NULL);
     return;
   }
-
+  //12.初始化定时器
   ret = rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(50), timer_callback);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_timer_init_default error: %d\n", ret);
     vTaskDelete(NULL);
     return;
   }
-
+  //13.将定时器添加到执行器
   ret = rclc_executor_add_timer(&executor, &timer);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_executor_add_timer error: %d\n", ret);
     vTaskDelete(NULL);
     return;
   }
-
+  //14.MPU6050节点初始化
+  init_mpu6050_node(&node, &support, &executor);
+  //15.时间同步
   int sync_attempts = 0;
   while (!rmw_uros_epoch_synchronized() && sync_attempts < 10) {
     Serial.println("Synchronizing time with agent...");
