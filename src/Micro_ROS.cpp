@@ -6,12 +6,12 @@
 #include <Adafruit_Sensor.h>
 
 // WiFi credentials and agent IP (moved from main.cpp)
-// char ssid[] = "沙河汤臣一品";
-// char password[] = "20050202";
-// IPAddress agent_ip(192, 168, 0, 134);
-char ssid[] = "fudoyusei";
-char password[] = "12345678";
-IPAddress agent_ip(192, 168, 112, 191);
+char ssid[] = "沙河汤臣一品";
+char password[] = "20050202";
+IPAddress agent_ip(192, 168, 0, 134);
+// char ssid[] = "fudoyusei";
+// char password[] = "12345678";
+// IPAddress agent_ip(192, 168, 112, 191);
 
 // micro-ROS related globals (definitions)
 rcl_subscription_t sub_cmd_vel;
@@ -145,7 +145,7 @@ void microros_task(void* args)
   }
 
   //7.初始化执行器
-  unsigned int num_handles = 4;//运动订阅者 + 里程计定时器 + IMU定时器 + 超声波定时器
+  unsigned int num_handles = 5;//运动订阅者 + 里程计定时器 + IMU定时器 + 超声波定时器
   ret = rclc_executor_init(&executor, &support.context, num_handles, &allocator);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_executor_init error: %d\n", ret);

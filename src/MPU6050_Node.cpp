@@ -24,7 +24,7 @@ void imu_timer_callback(rcl_timer_t* timer, int64_t last_call_time)
   msg_imu.header.stamp.sec = static_cast<int32_t>(stamp/1000);
   msg_imu.header.stamp.nanosec = static_cast<int32_t>((stamp%1000)*1e6);
   
-  msg_imu.header.frame_id = micro_ros_string_utilities_set(msg_imu.header.frame_id, "imu_link");
+  //msg_imu.header.frame_id = micro_ros_string_utilities_set(msg_imu.header.frame_id, "imu_link");
   
   // 四元数（只有偏航角）
   msg_imu.orientation.x = 0.0;
@@ -43,8 +43,9 @@ void imu_timer_callback(rcl_timer_t* timer, int64_t last_call_time)
   msg_imu.linear_acceleration.z = imu_linear_acceleration_z;
   
   rcl_ret_t ret = rcl_publish(&pub_imu, &msg_imu, NULL);
-  if (ret == RCL_RET_OK) {
-    // 发布成功
+  if (ret != RCL_RET_OK) {
+      // 如果这里也开始报错，说明问题可能更深层
+      Serial.printf("IMU publish failed: %d\n", ret);
   }
 }
 
@@ -62,9 +63,10 @@ void init_mpu6050_node(rcl_node_t* node, rclc_support_t* support, rclc_executor_
     Serial.println("Failed to initialize IMU publisher");
     return;
   }
-
+  // 在这里预设一次 frame_id
+  msg_imu.header.frame_id = micro_ros_string_utilities_set(msg_imu.header.frame_id, "imu_link");
   // 初始化IMU定时器
-  ret = rclc_timer_init_default(&imu_timer, support, RCL_MS_TO_NS(100), imu_timer_callback);
+  ret = rclc_timer_init_default(&imu_timer, support, RCL_MS_TO_NS(200), imu_timer_callback);
   if (ret != RCL_RET_OK) {
     Serial.println("Failed to initialize IMU timer");
     return;

@@ -56,7 +56,7 @@ void ultrasonic_timer_callback(rcl_timer_t* timer, int64_t last_call_time) {
   msg_ultrasonic.header.stamp.nanosec = static_cast<int32_t>((stamp%1000)*1e6);
   
   // 设置消息头
-  msg_ultrasonic.header.frame_id = micro_ros_string_utilities_set(msg_ultrasonic.header.frame_id, "ultrasonic_sensor");
+  //msg_ultrasonic.header.frame_id = micro_ros_string_utilities_set(msg_ultrasonic.header.frame_id, "ultrasonic_sensor");
   
   // 设置超声波参数
   msg_ultrasonic.radiation_type = sensor_msgs__msg__Range__ULTRASOUND;
@@ -68,7 +68,8 @@ void ultrasonic_timer_callback(rcl_timer_t* timer, int64_t last_call_time) {
   if (distance >= 0) {
     msg_ultrasonic.range = distance / 100.0;
   } else {
-    msg_ultrasonic.range = std::numeric_limits<float>::infinity(); // 表示无效测量
+    // 使用 max_range + 0.1 作为超出范围的指示，比 infinity 更安全
+    msg_ultrasonic.range = msg_ultrasonic.max_range + 0.1f;
   }
   
   // 发布数据
@@ -123,6 +124,12 @@ void init_ultrasonic_node(rcl_node_t* node, rclc_support_t* support, rclc_execut
     Serial.println("Failed to add ultrasonic timer to executor");
     return;
   }
+
+  // 预初始化帧ID（仅执行一次）
+  msg_ultrasonic.header.frame_id = micro_ros_string_utilities_set(
+    msg_ultrasonic.header.frame_id, "ultrasonic_sensor"
+  );
+
 
   Serial.println("Ultrasonic node initialized successfully");
 }
