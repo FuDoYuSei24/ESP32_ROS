@@ -11,6 +11,8 @@
 #include <micro_ros_utilities/string_utilities.h>
 #include <geometry_msgs/msg/twist.h>
 #include <nav_msgs/msg/odometry.h>
+#include <sensor_msgs/msg/imu.h>
+#include <sensor_msgs/msg/range.h>  // 添加超声波消息支持
 #include "PIDController.h"
 
 // 这些宏在原文件中用于心跳检测，保留在这里以便 micro-ROS 相关代码使用
@@ -50,5 +52,8 @@ extern PIDController pid_controller[2];
 void timer_callback(rcl_timer_t* timer, int64_t last_call_time);
 void twist_callback(const void* msg_in);
 void microros_task(void* args);
+
+
+
 
 #endif // MICRO_ROS_H

@@ -122,7 +122,7 @@ void setup() {
   msg_odom.pose.pose.orientation.z = 0;
   msg_odom.pose.pose.orientation.w = 1;
   //8.创建一个任务来启动micro-ros的task
-  xTaskCreate(microros_task,"micros_task",16384,NULL,1,NULL);
+  xTaskCreate(microros_task,"micros_task",24576,NULL,1,NULL);
 
   //9.初始化I2C总线
   Wire.begin(21, 22); // SDA=GPIO21, SCL=GPIO22
