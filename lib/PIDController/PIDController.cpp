@@ -32,10 +32,10 @@ float PIDController::update(float current){
     static int count = 0;
     if (count++ > 100) {
         count = 0;
-        Serial.printf("output=%f\n",output);
+        //Serial.printf("output=%f\n",output);
     }
 
-    Serial.printf("output=%f\n",output);
+    //Serial.printf("output=%f\n",output);
     return output;
 
 }

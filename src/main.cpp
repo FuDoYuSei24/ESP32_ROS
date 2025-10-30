@@ -166,9 +166,9 @@ void loop() {
   // 更新IMU数据
   updateIMU();
 
-  Serial.printf("tick_0=%d,tick_1=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
+  //Serial.printf("tick_0=%d,tick_1=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
   kinematics.update_motor_speed(millis(),encoders[0].getTicks(),encoders[1].getTicks());
-  Serial.printf("left_tick=%d,right_tick=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
+  //Serial.printf("left_tick=%d,right_tick=%d\n",encoders[0].getTicks(),encoders[1].getTicks());
 
   // 获取当前速度
   float left_speed = kinematics.get_motor_speed(0);
@@ -185,8 +185,8 @@ void loop() {
  
   // 打印两个电机的速度
   //Serial.printf("speed1=%f,speed2=%f\n",current_speed[0],current_speed[1]);
-  Serial.printf("x,y,yaw=%f,%f,%f\n",kinematics.get_odom().x,kinematics.get_odom().y,
-                                     kinematics.get_odom().angle);
+  //Serial.printf("x,y,yaw=%f,%f,%f\n",kinematics.get_odom().x,kinematics.get_odom().y,
+  //                                   kinematics.get_odom().angle);
 
   // 每500毫秒更新一次OLED显示
   static unsigned long lastDisplayUpdate = 0;
@@ -361,15 +361,15 @@ void updateIMU() {
   while (imu_yaw < -PI) imu_yaw += 2 * PI;
   
   // 调试输出
-  static unsigned long last_debug = 0;
-  if (millis() - last_debug > 500) {
-    Serial.printf("IMU Yaw: %.2f rad (%.1f°)\n", imu_yaw, imu_yaw * 180 / PI);
-    Serial.printf("Gyro: X=%.2f, Y=%.2f, Z=%.2f rad/s\n", 
-                  imu_angular_velocity_x, imu_angular_velocity_y, imu_angular_velocity_z);
-    Serial.printf("Accel: X=%.2f, Y=%.2f, Z=%.2f m/s²\n", 
-                  imu_linear_acceleration_x, imu_linear_acceleration_y, imu_linear_acceleration_z);
-    last_debug = millis();
-  }
+  // static unsigned long last_debug = 0;
+  // if (millis() - last_debug > 500) {
+  //   Serial.printf("IMU Yaw: %.2f rad (%.1f°)\n", imu_yaw, imu_yaw * 180 / PI);
+  //   Serial.printf("Gyro: X=%.2f, Y=%.2f, Z=%.2f rad/s\n", 
+  //                 imu_angular_velocity_x, imu_angular_velocity_y, imu_angular_velocity_z);
+  //   Serial.printf("Accel: X=%.2f, Y=%.2f, Z=%.2f m/s²\n", 
+  //                 imu_linear_acceleration_x, imu_linear_acceleration_y, imu_linear_acceleration_z);
+  //   last_debug = millis();
+  // }
 }
 
 //IMU校准函数
@@ -407,9 +407,9 @@ void calibrateIMU() {
   float accel_bias_y = ay_sum / samples;
   float accel_bias_z = az_sum / samples - 9.81; // 减去重力加速度
   
-  Serial.println("Calibration results:");
-  Serial.printf("Gyro bias: X=%.6f, Y=%.6f, Z=%.6f rad/s\n", gyro_bias_x, gyro_bias_y, gyro_bias_z);
-  Serial.printf("Accel bias: X=%.6f, Y=%.6f, Z=%.6f m/s^2\n", accel_bias_x, accel_bias_y, accel_bias_z);
+  // Serial.println("Calibration results:");
+  // Serial.printf("Gyro bias: X=%.6f, Y=%.6f, Z=%.6f rad/s\n", gyro_bias_x, gyro_bias_y, gyro_bias_z);
+  // Serial.printf("Accel bias: X=%.6f, Y=%.6f, Z=%.6f m/s^2\n", accel_bias_x, accel_bias_y, accel_bias_z);
   
   // 保存校准值（在实际应用中应该保存到EEPROM）
 }

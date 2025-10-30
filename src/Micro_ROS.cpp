@@ -2,6 +2,7 @@
 #include "Kinematics.h"
 #include "MPU6050_Node.h"
 #include "Ultrasonic_Node.h"
+#include <rmw/types.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 
@@ -43,8 +44,9 @@ void twist_callback(const void* msg_in)
   kinematics.kinematics_inverse(target_linear_speed, target_angular_speed,
                                 &out_left_speed, &out_right_speed);
 
-  Serial.printf("New command: linear=%.2f, angular=%.2f -> OUT:left_speed=%f,right_speed=%f\n",
-                target_linear_speed, target_angular_speed, out_left_speed, out_right_speed);
+  // 保留调试信息，但减少频率或删除
+  // Serial.printf("New command: linear=%.2f, angular=%.2f -> OUT:left_speed=%f,right_speed=%f\n",
+  //              target_linear_speed, target_angular_speed, out_left_speed, out_right_speed);
 
   // 订阅回调只负责将目标速度传给 PID/运动学层，具体的 PID 目标更新在其他模块完成（main.cpp 中仍有 PIDController）
   // 这里仍保留 msg_cmd_vel 以便于外部检查或复用
@@ -81,7 +83,8 @@ void timer_callback(rcl_timer_t* timer,int64_t last_call_time)
   }
   else
   {
-    Serial.println("error:odom pub failed");
+    // 只在调试时开启错误打印
+    // Serial.println("error:odom pub failed");
   }
 
   if (millis() - last_agent_check > AGENT_CHECK_INTERVAL) {
@@ -176,6 +179,7 @@ void microros_task(void* args)
   msg_odom.header.frame_id = micro_ros_string_utilities_set(msg_odom.header.frame_id, "odom");
   msg_odom.child_frame_id = micro_ros_string_utilities_set(msg_odom.child_frame_id, "base_footprint");
   //11.初始化里程计发布者
+  
   ret = rclc_publisher_init_best_effort(
     &pub_odom,
     &node,
@@ -202,22 +206,29 @@ void microros_task(void* args)
     return;
   }
   //14.MPU6050节点初始化
-  //init_mpu6050_node(&node, &support, &executor);
+  init_mpu6050_node(&node, &support, &executor);
   //15.超声波节点初始化
-  init_ultrasonic_node(&node, &support, &executor);
+  //init_ultrasonic_node(&node, &support, &executor);
 
-  //16.时间同步
+  //16.时间同步 - 增强版本
   int sync_attempts = 0;
-  while (!rmw_uros_epoch_synchronized() && sync_attempts < 30) {
-    Serial.println("Synchronizing time with agent...");
+  bool time_synced = false;
+  while (!rmw_uros_epoch_synchronized() && sync_attempts < 50) { // 增加尝试次数
     rmw_uros_sync_session(1000);
-    delay(100);
+    delay(200); // 稍微延长延迟
     sync_attempts++;
+    
+    // 检查是否同步成功
+    if (rmw_uros_epoch_synchronized()) {
+      time_synced = true;
+      break;
+    }
   }
-  if (!rmw_uros_epoch_synchronized()) {
-    Serial.println("Time synchronization failed!");
-    vTaskDelete(NULL);
-    return;
+
+  if (!time_synced) {
+    Serial.println("Time synchronization failed, but continuing...");
+  } else {
+    Serial.println("Time synchronization completed successfully!");
   }
 
   Serial.println("micro-ROS setup complete!");
@@ -226,22 +237,30 @@ void microros_task(void* args)
   last_agent_check = millis();
   updateDisplay();
 
-
   while (true) {
-    if (WiFi.status() != WL_CONNECTED) {
-      if (microros_connected) {
-        Serial.println("WiFi connection lost in main loop!");
-        microros_connected = false;
-      }
-    }
-    rcl_ret_t rc = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
-    if (rc != RCL_RET_OK) {
-      Serial.printf("rclc_executor_spin_some error: %d\n", rc);
-      if (microros_connected) {
-        microros_connected = false;
-        Serial.println("Executor error - agent may be disconnected");
-      }
-      delay(100);
-    }
+  static unsigned long last_status_check = 0;
+  if (millis() - last_status_check > 5000) {
+    last_status_check = millis();
+    
+    // 减少状态检查的打印频率或删除
+    // Serial.printf("=== System Status ===\n");
+    // Serial.printf("WiFi: %s\n", WiFi.status() == WL_CONNECTED ? "CONNECTED" : "DISCONNECTED");
+    // Serial.printf("Agent: %s\n", microros_connected ? "CONNECTED" : "DISCONNECTED");
+    // Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+    // Serial.printf("Time synced: %s\n", rmw_uros_epoch_synchronized() ? "YES" : "NO");
+    // Serial.printf("Current time: %lld\n", rmw_uros_epoch_millis());
+    // Serial.printf("=====================\n");
   }
+  
+  rcl_ret_t rc = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+  if (rc != RCL_RET_OK) {
+    // 只在调试时开启错误打印
+    // Serial.printf("Executor spin error: %d\n", rc);
+    if (microros_connected) {
+      microros_connected = false;
+      Serial.println("Agent connection lost due to executor error");
+    }
+    delay(100);
+  }
+ }
 }

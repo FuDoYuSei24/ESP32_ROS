@@ -88,7 +88,7 @@ int16_t Kinematics::get_motor_speed(uint8_t id)
     {
         return -1;
     }
-    Serial.printf("motor%d:speed:%d\n",id,motor_param[id].motor_speed);
+    //Serial.printf("motor%d:speed:%d\n",id,motor_param[id].motor_speed);
     return motor_param[id].motor_speed;
 }
 
