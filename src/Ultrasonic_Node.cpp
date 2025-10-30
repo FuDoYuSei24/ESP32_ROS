@@ -1,5 +1,6 @@
 #include "Ultrasonic_Node.h"
 #include <Arduino.h>
+#include <rmw/types.h>
 
 // 引脚定义
 const int TRIG_PIN = 12;
@@ -47,63 +48,61 @@ void ultrasonic_timer_callback(rcl_timer_t* timer, int64_t last_call_time) {
   (void) timer;
   (void) last_call_time;
   
+  Serial.println("ULTRASONIC TIMER CALLBACK TRIGGERED!");
+  
   // 读取距离
   float distance = read_ultrasonic_distance();
+  Serial.printf("Distance reading: %.1f cm\n", distance);
   
   // 获取当前时间戳
   int64_t stamp = rmw_uros_epoch_millis();
-  msg_ultrasonic.header.stamp.sec = static_cast<int32_t>(stamp/1000);
-  msg_ultrasonic.header.stamp.nanosec = static_cast<int32_t>((stamp%1000)*1e6);
+  msg_ultrasonic.header.stamp.sec = static_cast<int32_t>(stamp / 1000);
+  msg_ultrasonic.header.stamp.nanosec = static_cast<uint32_t>((stamp % 1000) * 1000000);
   
-  // 设置消息头
-  //msg_ultrasonic.header.frame_id = micro_ros_string_utilities_set(msg_ultrasonic.header.frame_id, "ultrasonic_sensor");
-  
-  // 设置超声波参数
-  msg_ultrasonic.radiation_type = sensor_msgs__msg__Range__ULTRASOUND;
-  msg_ultrasonic.field_of_view = 0.5236; // 约30度
-  msg_ultrasonic.min_range = MIN_DISTANCE / 100.0; // 转换为米
-  msg_ultrasonic.max_range = MAX_DISTANCE / 100.0; // 转换为米
-  
-  // 设置测量距离 (转换为米)
+  // 设置测量距离
   if (distance >= 0) {
     msg_ultrasonic.range = distance / 100.0;
   } else {
-    // 使用 max_range + 0.1 作为超出范围的指示，比 infinity 更安全
     msg_ultrasonic.range = msg_ultrasonic.max_range + 0.1f;
   }
+  
+  Serial.printf("Publishing range: %.3f m\n", msg_ultrasonic.range);
   
   // 发布数据
   rcl_ret_t ret = rcl_publish(&pub_ultrasonic, &msg_ultrasonic, NULL);
   if (ret != RCL_RET_OK) {
-    Serial.printf("Ultrasonic publish failed: %d\n", ret);
+    Serial.printf("Ultrasonic publish FAILED: %d\n", ret);
   } else {
-    // 可选：调试输出
-    static unsigned long last_debug = 0;
-    if (millis() - last_debug > 1000) {
-      if (distance >= 0) {
-        Serial.printf("Ultrasonic: %.1f cm\n", distance);
-      } else {
-        Serial.println("Ultrasonic: No object detected");
-      }
-      last_debug = millis();
-    }
+    Serial.println("Ultrasonic publish SUCCESS");
   }
 }
 
 // 初始化超声波节点
 void init_ultrasonic_node(rcl_node_t* node, rclc_support_t* support, rclc_executor_t* executor) {
-  // 初始化引脚
+   // 初始化引脚
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   
   Serial.println("Initializing ultrasonic sensor pins...");
+  msg_ultrasonic.radiation_type = sensor_msgs__msg__Range__ULTRASOUND; // 必须指定为超声波类型
+  msg_ultrasonic.field_of_view = 0.5236f; // 视场角（弧度，例如30度=0.5236rad）
+  msg_ultrasonic.min_range = 0.02f; // 最小测距（米）
+  msg_ultrasonic.max_range = 4.0f;  // 最大测距（米）
+  msg_ultrasonic.range = 0.0f;      // 初始距离（回调中更新） 
   
-  // 初始化发布者
-  rcl_ret_t ret = rclc_publisher_init_best_effort(
+  // 初始化发布者 - 使用正确的rmw QoS配置
+  rmw_qos_profile_t qos = rmw_qos_profile_default;  // 使用rmw命名空间的QoS结构体
+  qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;  // 使用rmw命名空间的宏
+  qos.durability = RMW_QOS_POLICY_DURABILITY_VOLATILE;
+  qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+  qos.depth = 10;
+
+  rcl_ret_t ret = rclc_publisher_init(
     &pub_ultrasonic,
     node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Range),
-    "/ultrasonic"
+    "/ultrasonic",
+    &qos
   );
   
   if (ret != RCL_RET_OK) {
@@ -129,7 +128,6 @@ void init_ultrasonic_node(rcl_node_t* node, rclc_support_t* support, rclc_execut
   msg_ultrasonic.header.frame_id = micro_ros_string_utilities_set(
     msg_ultrasonic.header.frame_id, "ultrasonic_sensor"
   );
-
 
   Serial.println("Ultrasonic node initialized successfully");
 }

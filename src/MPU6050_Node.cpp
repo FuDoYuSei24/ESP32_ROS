@@ -56,7 +56,7 @@ void init_mpu6050_node(rcl_node_t* node, rclc_support_t* support, rclc_executor_
     &pub_imu,
     node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu),
-    "/imu/data"
+    "/robot1/imu/data"
   );
   
   if (ret != RCL_RET_OK) {

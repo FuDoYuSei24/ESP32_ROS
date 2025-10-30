@@ -145,7 +145,7 @@ void microros_task(void* args)
   }
 
   //7.初始化执行器
-  unsigned int num_handles = 5;//运动订阅者 + 里程计定时器 + IMU定时器 + 超声波定时器
+  unsigned int num_handles = 4;//运动订阅者 + 里程计定时器 + IMU定时器 + 超声波定时器
   ret = rclc_executor_init(&executor, &support.context, num_handles, &allocator);
   if (ret != RCL_RET_OK) {
     Serial.printf("rclc_executor_init error: %d\n", ret);
@@ -202,9 +202,10 @@ void microros_task(void* args)
     return;
   }
   //14.MPU6050节点初始化
-  init_mpu6050_node(&node, &support, &executor);
+  //init_mpu6050_node(&node, &support, &executor);
   //15.超声波节点初始化
   init_ultrasonic_node(&node, &support, &executor);
+
   //16.时间同步
   int sync_attempts = 0;
   while (!rmw_uros_epoch_synchronized() && sync_attempts < 30) {
@@ -224,6 +225,7 @@ void microros_task(void* args)
   last_successful_publish = millis();
   last_agent_check = millis();
   updateDisplay();
+
 
   while (true) {
     if (WiFi.status() != WL_CONNECTED) {
