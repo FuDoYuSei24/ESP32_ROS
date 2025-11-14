@@ -7,12 +7,12 @@
 #include <Adafruit_Sensor.h>
 
 // WiFi credentials and agent IP (moved from main.cpp)
-char ssid[] = "沙河汤臣一品";
-char password[] = "20050202";
-IPAddress agent_ip(192, 168, 0, 134);
-// char ssid[] = "fudoyusei";
-// char password[] = "12345678";
-// IPAddress agent_ip(192, 168, 112, 191);
+// char ssid[] = "沙河汤臣一品";
+// char password[] = "20050202";
+// IPAddress agent_ip(192, 168, 0, 134);
+char ssid[] = "fudoyusei";
+char password[] = "12345678";
+IPAddress agent_ip(192, 168, 119, 191);
 
 // micro-ROS related globals (definitions)
 rcl_subscription_t sub_cmd_vel;

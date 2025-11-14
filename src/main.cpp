@@ -81,15 +81,22 @@ void setup() {
   // 1.初始化串口
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
-  // 2.设置编码器
+  // 2.设置编码器v1.0
   encoders[0].init(0, 2, 15); // 初始化第一个编码器，使用GPIO2和15连接编码器A相和B相
-  encoders[1].init(1, 34, 35); // 初始化第二个编码器，使用GPIO34和35连接编码器A相和B相
-
-  //3.初始化电机的引脚设置(id,pwm,in1,in2)
+  encoders[1].init(1, 34, 35); // 初始化第二个编码器，使用GPIO34和35连接编码器A相和B相(35->12,34->13)
+  // 2.设置编码器v2.0
+  encoders[0].init(0, 13, 12); // 初始化第一个编码器，使用GPIO 13和12连接
+  encoders[1].init(1, 18, 5); // 初始化第二个编码器，使用GPIO 18和5连接
+  //3.初始化电机的引脚设置(id,pwm,in1,in2)v1.0
   motor[0].attachMotor(0, 4, 17, 16);//左前A
   motor[0].attachMotor(1, 14, 27, 26);//右前D
-  motor[1].attachMotor(0, 19, 5, 18);//左后B
-  motor[1].attachMotor(1, 32, 33, 25);//右后C
+  motor[1].attachMotor(0, 19, 5, 18);//左后B->4,17,16
+  motor[1].attachMotor(1, 32, 33, 25);//右后C->14,27,26
+  //3.初始化电机的引脚设置(id,pwm,in1,in2)v2.0
+  motor[0].attachMotor(0, 4, 16, 17);//左前A
+  motor[0].attachMotor(1, 14, 26, 27);//右前D
+  motor[1].attachMotor(0, 4, 16, 17);//左后B
+  motor[1].attachMotor(1, 14, 26, 27);//右后C
   
   //4.设置电机速度。这里初始化为0
   motor[0].updateMotorSpeed(0, 0);
@@ -418,3 +425,28 @@ void calibrateIMU() {
 bool shouldStopCompletely() {
     return (fabs(target_linear_speed) < 0.01 && fabs(target_angular_speed) < 0.01);
 }
+
+
+
+// #include <Arduino.h>
+// #include <Esp32PcntEncoder.h>
+
+// Esp32PcntEncoder encoders[2]; // 创建一个数组用于存储两个编码器
+
+// void setup()
+// {
+//   // 1.初始化串口
+//   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
+
+//   // 2.设置编码器
+//   encoders[0].init(0, 13, 12); // 初始化第一个编码器，使用GPIO 13和12连接
+//   encoders[1].init(1, 18, 5); // 初始化第二个编码器，使用GPIO 18和5连接
+// }
+
+// void loop()
+// {
+//   delay(10); // 等待10毫秒
+
+//   // 读取并打印两个编码器的计数器数值
+//   Serial.printf("tick1=%d,tick2=%d\n", encoders[0].getTicks(), encoders[1].getTicks());
+// }
