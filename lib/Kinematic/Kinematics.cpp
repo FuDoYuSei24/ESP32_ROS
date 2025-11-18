@@ -123,6 +123,7 @@ void Kinematics::update_odom(uint16_t dt)
     odom.angle += delta_angle;
     TransAngleInPI(odom.angle); // 角度归一化
   }
+
   
   // 计算机器人行走的距离
   float delta_distance = odom.linear_speed * dt_s;
@@ -132,3 +133,18 @@ void Kinematics::update_odom(uint16_t dt)
   odom.y += delta_distance * std::sin(odom.angle);
 }
 
+void Kinematics::reset_odom()
+{
+    odom.x = 0;
+    odom.y = 0;
+    odom.angle = 0;
+    odom.linear_speed = 0;
+    odom.angular_speed = 0;
+    
+    // 同时重置编码器相关的历史数据
+    motor_param[0].last_encoder_ticks = 0;
+    motor_param[1].last_encoder_ticks = 0;
+    delta_ticks[0] = 0;
+    delta_ticks[1] = 0;
+    last_update_time = 0;
+}

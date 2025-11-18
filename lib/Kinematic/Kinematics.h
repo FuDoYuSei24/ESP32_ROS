@@ -55,6 +55,7 @@ class Kinematics
         void update_motor_speed(uint64_t current_time,int32_t left_tick,int32_t right_tick);
         //获取电机速度,返回值是速度
         int16_t get_motor_speed(uint8_t id);
+        void reset_odom(); // 重置里程计到零点
 
 
 };

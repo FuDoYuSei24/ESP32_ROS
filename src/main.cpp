@@ -56,6 +56,14 @@ float imu_linear_acceleration_z = 0.0;
 float smoothed_left_target = 0;
 float smoothed_right_target = 0;
 unsigned long last_smooth_time = 0;
+// MPU6050 互补滤波相关变量
+float complementary_angle = 0.0;
+float accel_angle = 0.0;
+float gyro_bias_z = 0.0;
+bool gyro_calibrated = false;
+unsigned long last_comp_filter_time = 0;
+float complementary_alpha = 0.98; // 互补滤波参数，可调整
+
 
 // 添加外部声明
 extern bool microros_connected;
@@ -75,73 +83,48 @@ void updateIMU();
 void calibrateIMU();
 // 检测是否应该完全停止函数
 bool shouldStopCompletely();
+// 电机校准函数
+void calibrate_motors();
+// 函数声明
+void updateComplementaryFilter();
+void calibrateGyroBias();
+float calculateAccelAngle(float accel_x, float accel_y, float accel_z);
 
 /*------------------------------------------SetUP函数---------------------------------------------------------*/
 void setup() {
+
   // 1.初始化串口
   Serial.begin(115200); // 初始化串口通信，设置通信速率为115200
 
   // 2.设置编码器v1.0
-  encoders[0].init(0, 2, 15); // 初始化第一个编码器，使用GPIO2和15连接编码器A相和B相
-  encoders[1].init(1, 34, 35); // 初始化第二个编码器，使用GPIO34和35连接编码器A相和B相(35->12,34->13)
-  // 2.设置编码器v2.0
-  encoders[0].init(0, 13, 12); // 初始化第一个编码器，使用GPIO 13和12连接
-  encoders[1].init(1, 18, 5); // 初始化第二个编码器，使用GPIO 18和5连接
+  encoders[0].init(0, 15, 2); // 初始化第一个编码器，使用GPIO2和15连接编码器A相和B相
+  encoders[1].init(1, 35, 34); // 初始化第二个编码器，使用GPIO34和35连接编码器A相和B相(35->12,34->13)
+
   //3.初始化电机的引脚设置(id,pwm,in1,in2)v1.0
-  motor[0].attachMotor(0, 4, 17, 16);//左前A
-  motor[0].attachMotor(1, 14, 27, 26);//右前D
-  motor[1].attachMotor(0, 19, 5, 18);//左后B->4,17,16
-  motor[1].attachMotor(1, 32, 33, 25);//右后C->14,27,26
-  //3.初始化电机的引脚设置(id,pwm,in1,in2)v2.0
   motor[0].attachMotor(0, 4, 16, 17);//左前A
   motor[0].attachMotor(1, 14, 26, 27);//右前D
-  motor[1].attachMotor(0, 4, 16, 17);//左后B
-  motor[1].attachMotor(1, 14, 26, 27);//右后C
-  
+  motor[1].attachMotor(0, 19, 18, 5);//左后B->4,17,16
+  motor[1].attachMotor(1, 32, 25, 33);//右后C->14,27,26
+
   //4.设置电机速度。这里初始化为0
   motor[0].updateMotorSpeed(0, 0);
   motor[0].updateMotorSpeed(1, 0);
   motor[1].updateMotorSpeed(0, 0);
   motor[1].updateMotorSpeed(1, 0);
 
-  //5.初始化PID控制器
-  //0.6, 0.004, 0.06还行
-  //0.625,0.125,0.0
-  //0.15,0.001,0.01
-  pid_controller[0].update_pid(0.15, 0.00015, 0.03);//pid参数
-  pid_controller[1].update_pid(0.15, 0.00015, 0.03);
-  pid_controller[0].out_limit(-800,800);//设置输出限制
-  pid_controller[1].out_limit(-800,800);
-
-  pid_controller[0].update_target(0);//设置目标值为0
-  pid_controller[1].update_target(0);
-
-
-  //6.初始化运动学参数
-  //轮子转一圈编码器的脉冲数为1600
-  //轮子直径为83mm，则每个脉冲的前进距离为80*3.14/1600=0.1570796mm
-  kinematics.set_wheel_distance(175.0); // 设置两个轮子之间的距离为175mm
-  kinematics.set_motor_param(0,0.1570796);
-  kinematics.set_motor_param(1,0.1570796);
-  //7.初始化里程计消息
-  msg_odom.pose.pose.orientation.x = 0;
-  msg_odom.pose.pose.orientation.y = 0;
-  msg_odom.pose.pose.orientation.z = 0;
-  msg_odom.pose.pose.orientation.w = 1;
-  //8.创建一个任务来启动micro-ros的task
-  //扩大任务栈到40KB以防止内存不足
-  xTaskCreate(microros_task,"micros_task",40960,NULL,1,NULL);
-
-  //9.初始化I2C总线
+  //5.初始化I2C总线
   Wire.begin(21, 22); // SDA=GPIO21, SCL=GPIO22
   Wire.setClock(100000); // 降低I2C速度以提高兼容性
 
-
-  //10.初始化OLED显示屏
+  //6.初始化OLED显示屏
   InitOLED();
 
-  
-  //11.初始化MPU6050
+  //7.电机校准
+  encoders[0].clearCount();  // 使用clearCount而不是reset
+  encoders[1].clearCount();
+  calibrate_motors();
+
+  //8.初始化MPU6050
   Serial.println("Initializing MPU6050...");
   if (!mpu.begin(0x68)) {
     Serial.println("Failed to find MPU6050 at 0x68, trying 0x69...");
@@ -157,13 +140,58 @@ void setup() {
   }
   
   if (mpu_initialized) {
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    mpu.setAccelerometerRange(MPU6050_RANGE_4_G);  // 改为4G范围
+    mpu.setGyroRange(MPU6050_RANGE_500_DEG);       // 500度/秒
+    mpu.setFilterBandwidth(MPU6050_BAND_10_HZ);    // 降低带宽减少噪声
+    
     Serial.println("MPU6050 configured successfully");
-    calibrateIMU();//初始校准
+    
+    // 先校准IMU，再校准陀螺仪零偏
+    calibrateIMU();
+    calibrateGyroBias();
+    
+    // 初始化互补滤波角度
+    complementary_angle = 0.0;
+    imu_yaw = 0.0;
+    last_comp_filter_time = millis();
   }
 
+
+  // 9. 重置编码器计数 - 校准后清零
+  encoders[0].reset();  
+  encoders[1].reset();
+
+  //10. 初始化运动学参数
+  //轮子转一圈编码器的脉冲数为1300
+  //轮子直径为65mm，则每个脉冲的前进距离为65*3.14/100=0.1570796mm
+  kinematics.set_wheel_distance(175.0); // 设置两个轮子之间的距离为175mm
+  kinematics.set_motor_param(0,0.1570796);
+  kinematics.set_motor_param(1,0.1570796);
+
+  //11. 重置里程计
+  kinematics.reset_odom();
+
+  //12. 初始化PID控制器
+  //0.6, 0.004, 0.06还行
+  //0.625,0.125,0.0
+  //0.15,0.001,0.01
+  pid_controller[0].update_pid(0.245, 0.000048, 0.058);//pid参数
+  pid_controller[1].update_pid(0.25, 0.00005, 0.06);
+  pid_controller[0].out_limit(-800,800);//设置输出限制
+  pid_controller[1].out_limit(-800,800);
+
+  pid_controller[0].set_integral_limits(40.0f, 800.0f);// 设置积分限制和摩擦补偿
+  pid_controller[1].set_integral_limits(40.0f, 800.0f);
+  
+  pid_controller[0].set_friction_compensation(35.0f);
+  pid_controller[1].set_friction_compensation(35.0f);
+
+  pid_controller[0].update_target(0);//设置目标值为0
+  pid_controller[1].update_target(0);
+
+  //13.创建一个任务来启动micro-ros的task
+  //扩大任务栈到40KB以防止内存不足
+  xTaskCreate(microros_task,"micros_task",40960,NULL,1,NULL);
  
 }
 
@@ -320,63 +348,24 @@ void updateDisplay() {
   display.print(right_speed, 0);
   display.print("mm/s");
   
-  // 第6行: 运行时间
+  // 第6行: IMU偏航角
   display.setCursor(0, 50);
-  display.print("Up:");
-  display.print(millis() / 1000);
-  display.print("s");
+  display.print("Yaw:");
+  display.print(imu_yaw * 180 / PI, 1);
+  display.print("°");
+
+  // 第7行: 里程计的角度
+  display.setCursor(64, 50);
+  display.print("Odom:");
+  display.print(kinematics.get_odom().angle * 180 / PI, 1);
+  display.print("°");
   
   display.display();
 }
 
 // 更新IMU数据并计算偏航角
 void updateIMU() {
-  if (!mpu_initialized) return;
-  
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-  
-  // 保存原始数据供Micro-ROS使用
-  imu_angular_velocity_x = g.gyro.x;
-  imu_angular_velocity_y = g.gyro.y;
-  imu_angular_velocity_z = g.gyro.z;
-  
-  imu_linear_acceleration_x = a.acceleration.x;
-  imu_linear_acceleration_y = a.acceleration.y;
-  imu_linear_acceleration_z = a.acceleration.z;
-  
-  // 计算时间差（秒）
-  unsigned long current_time = millis();
-  float dt = (current_time - last_imu_time) / 1000.0f;
-  last_imu_time = current_time;
-  
-  // 确保dt在合理范围内
-  if (dt <= 0 || dt > 0.1) {
-    dt = 0.01; // 默认10ms
-  }
-  
-  // 计算偏航角变化（陀螺仪Z轴积分）
-  float yaw_rate = g.gyro.z; // 弧度/秒
-  imu_yaw += yaw_rate * dt;
-  
-  // 使用滤波器平滑数据
-  yawFilter.Filter(imu_yaw);
-  imu_yaw = yawFilter.Current();
-  
-  // 角度归一化到[-π, π]
-  while (imu_yaw > PI) imu_yaw -= 2 * PI;
-  while (imu_yaw < -PI) imu_yaw += 2 * PI;
-  
-  // 调试输出
-  // static unsigned long last_debug = 0;
-  // if (millis() - last_debug > 500) {
-  //   Serial.printf("IMU Yaw: %.2f rad (%.1f°)\n", imu_yaw, imu_yaw * 180 / PI);
-  //   Serial.printf("Gyro: X=%.2f, Y=%.2f, Z=%.2f rad/s\n", 
-  //                 imu_angular_velocity_x, imu_angular_velocity_y, imu_angular_velocity_z);
-  //   Serial.printf("Accel: X=%.2f, Y=%.2f, Z=%.2f m/s²\n", 
-  //                 imu_linear_acceleration_x, imu_linear_acceleration_y, imu_linear_acceleration_z);
-  //   last_debug = millis();
-  // }
+  updateComplementaryFilter(); // 使用改进的互补滤波
 }
 
 //IMU校准函数
@@ -426,7 +415,134 @@ bool shouldStopCompletely() {
     return (fabs(target_linear_speed) < 0.01 && fabs(target_angular_speed) < 0.01);
 }
 
+// 电机校准函数
+void calibrate_motors() {
+  Serial.println("开始电机校准...");
+  
+  // 测试两个电机在相同PWM下的速度差异
+  const int test_pwm = 200;
+  const int test_duration = 3000; // 3秒
+  
+  // 记录初始编码器值
+  int32_t left_start = encoders[0].getTicks();
+  int32_t right_start = encoders[1].getTicks();
+  
+  // 运行电机
+  motor[0].updateMotorSpeed(0, test_pwm);
+  motor[0].updateMotorSpeed(1, test_pwm);
+  motor[1].updateMotorSpeed(0, test_pwm);
+  motor[1].updateMotorSpeed(1, test_pwm);
+  
+  delay(test_duration);
+  
+  // 停止电机
+  motor[0].updateMotorSpeed(0, 0);
+  motor[0].updateMotorSpeed(1, 0);
+  motor[1].updateMotorSpeed(0, 0);
+  motor[1].updateMotorSpeed(1, 0);
+  
+  delay(500); // 等待完全停止
+  
+  // 读取编码器计数
+  int32_t left_ticks = encoders[0].getTicks() - left_start;
+  int32_t right_ticks = encoders[1].getTicks() - right_start;
+  
+  Serial.printf("校准结果 - 左轮脉冲: %d, 右轮脉冲: %d\n", left_ticks, right_ticks);
+  
+  // 计算补偿系数（如果需要）
+  if (abs(left_ticks - right_ticks) > 100) {
+    float compensation = (float)left_ticks / right_ticks;
+    Serial.printf("建议右轮PID参数乘以补偿系数: %.3f\n", compensation);
+  }
+  
+  delay(1000);
+}
 
+// 陀螺仪零偏校准函数
+void calibrateGyroBias() {
+  if (!mpu_initialized) return;
+  
+  Serial.println("Calibrating gyroscope bias... Please keep the robot stationary!");
+  
+  const int calibration_samples = 1000;
+  float gx_sum = 0.0, gy_sum = 0.0, gz_sum = 0.0;
+  
+  for (int i = 0; i < calibration_samples; i++) {
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    
+    gx_sum += g.gyro.x;
+    gy_sum += g.gyro.y;
+    gz_sum += g.gyro.z;
+    
+    delay(5);
+    
+    // 显示校准进度
+    if (i % 100 == 0) {
+      Serial.printf("Calibration progress: %d%%\n", (i * 100) / calibration_samples);
+    }
+  }
+  
+  gyro_bias_z = gz_sum / calibration_samples;
+  gyro_calibrated = true;
+  
+  Serial.printf("Gyro biases - X: %.6f, Y: %.6f, Z: %.6f rad/s\n", 
+                gx_sum / calibration_samples, 
+                gy_sum / calibration_samples, 
+                gyro_bias_z);
+  Serial.println("Gyroscope calibration completed!");
+}
+
+
+// 改进的互补滤波函数
+void updateComplementaryFilter() {
+  if (!mpu_initialized || !gyro_calibrated) return;
+  
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+  
+  // 保存原始数据供Micro-ROS使用
+  imu_angular_velocity_x = g.gyro.x;
+  imu_angular_velocity_y = g.gyro.y;
+  imu_angular_velocity_z = g.gyro.z - gyro_bias_z; // 应用零偏校准
+  
+  imu_linear_acceleration_x = a.acceleration.x;
+  imu_linear_acceleration_y = a.acceleration.y;
+  imu_linear_acceleration_z = a.acceleration.z;
+  
+  // 计算时间差
+  unsigned long current_time = millis();
+  float dt = (current_time - last_comp_filter_time) / 1000.0f;
+  last_comp_filter_time = current_time;
+  
+  // 确保dt在合理范围内
+  if (dt <= 0 || dt > 0.1) {
+    dt = 0.01; // 默认10ms
+  }
+  
+  // 重要修改：对于偏航角，只使用陀螺仪积分
+  // 加速度计无法提供偏航角的绝对参考，因此不使用加速度计修正偏航角
+  float gyro_rate = imu_angular_velocity_z;
+  
+  // 纯陀螺仪积分（会漂移，但短期准确）
+  complementary_angle += gyro_rate * dt;
+  
+  // 使用滤波器平滑
+  yawFilter.Filter(complementary_angle);
+  imu_yaw = yawFilter.Current();
+  
+  // 角度归一化到[-π, π]
+  while (imu_yaw > PI) imu_yaw -= 2 * PI;
+  while (imu_yaw < -PI) imu_yaw += 2 * PI;
+  
+  // 调试输出
+  static unsigned long last_debug = 0;
+  if (millis() - last_debug > 1000) {
+    last_debug = millis();
+    Serial.printf("Yaw: %.2f°, Gyro Z: %.3f rad/s, dt: %.3f s\n",
+                 imu_yaw * 180 / PI, gyro_rate, dt);
+  }
+}
 
 // #include <Arduino.h>
 // #include <Esp32PcntEncoder.h>

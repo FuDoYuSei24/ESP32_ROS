@@ -14,14 +14,18 @@ class PIDController{
         float kp_;
         float ki_;
         float kd_;
-        float intergral_up_ = 2500;//积分上限
         //pid中间值
         float error_;//误差
         float error_sum_;//误差积分
         float derror_;//误差变化率
         float prev_error_;//上一次的误差
         // float friction_compensation_ = 30.0; // 静摩擦补偿值
-
+        // 新增：积分限制参数
+        float integral_threshold_ = 50.0f;  // 积分生效的误差阈值
+        float integral_max_ = 1000.0f;      // 积分上限
+        
+        // 新增：静摩擦补偿
+        float friction_compensation_ = 30.0f;
 
 
 
@@ -31,6 +35,12 @@ class PIDController{
        void update_pid(float kp,float ki,float kd);//更新PID的参数
        void reset();//重置PID
        void out_limit(float min,float max);//限制输出范围
+       // 新增方法
+       void set_integral_limits(float threshold, float max);
+       void set_friction_compensation(float compensation);
+       // 新增：获取目标值用于调试
+       float get_target() const { return target_; }
+       void clearCount();
 
 
 
